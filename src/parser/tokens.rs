@@ -1,5 +1,5 @@
 #[allow(non_camel_case_types)]
-pub enum Token {
+pub enum TokenType {
   // BEGIN PropertyOrCall
   // BEGIN Member
   // BEGIN Template
@@ -154,72 +154,104 @@ pub enum Token {
   ESCAPED_KEYWORD,
 }
 
+impl TokenType {
+  pub fn from_single(c: char) -> Self {
+    match c {
+      '(' => TokenType::LPAREN,
+      ')' => TokenType::RPAREN,
+      '{' => TokenType::RBRACE,
+      '}' => TokenType::LBRACE,
+      '[' => TokenType::RBRACK,
+      ']' => TokenType::LBRACK,
+      ':' => TokenType::COLON,
+      ';' => TokenType::SEMICOLON,
+      ',' => TokenType::COMMA,
+      '~' => TokenType::BIT_NOT,
+      '`' => TokenType::TEMPLATE,
+      _ => unreachable!("unexpected char"),
+    }
+  }
+}
+
+pub struct TokenValue {}
+
+pub struct Token {
+  pub r#type: TokenType,
+  pub value: TokenValue,
+  pub start_index: usize,
+  pub end_index: usize,
+  pub line: usize,
+  pub column: usize,
+  pub had_line_terminator_before: bool,
+  pub escaped: bool,
+}
+
 impl Token {
   pub fn is_automatic_semicolon(&self) -> bool {
-    match self {
-      Token::SEMICOLON | Token::RBRACE | Token::EOS => true,
+    match self.r#type {
+      TokenType::SEMICOLON | TokenType::RBRACE | TokenType::EOS => true,
       _ => false,
     }
   }
 
   pub fn is_member(&self) -> bool {
-    match self {
-      Token::TEMPLATE | Token::PERIOD | Token::LBRACK => true,
+    match self.r#type {
+      TokenType::TEMPLATE | TokenType::PERIOD | TokenType::LBRACK => true,
       _ => false,
     }
   }
 
   pub fn is_property_call(&self) -> bool {
-    match self {
-      Token::TEMPLATE
-      | Token::PERIOD
-      | Token::LBRACK
-      | Token::OPTIONAL
-      | Token::LPAREN => true,
+    match self.r#type {
+      TokenType::TEMPLATE
+      | TokenType::PERIOD
+      | TokenType::LBRACK
+      | TokenType::OPTIONAL
+      | TokenType::LPAREN => true,
       _ => false,
     }
   }
 
   pub fn is_keyword(&self) -> bool {
-    match self {
-      Token::AWAIT
-      | Token::BREAK
-      | Token::CASE
-      | Token::CATCH
-      | Token::CLASS
-      | Token::CONST
-      | Token::CONTINUE
-      | Token::DEBUGGER
-      | Token::DEFAULT
-      | Token::DELETE
-      | Token::DO
-      | Token::ELSE
-      | Token::ENUM
-      | Token::EXPORT
-      | Token::EXTENDS
-      | Token::FALSE
-      | Token::FINALLY
-      | Token::FOR
-      | Token::FUNCTION
-      | Token::IF
-      | Token::IMPORT
-      | Token::IN
-      | Token::INSTANCEOF
-      | Token::NEW
-      | Token::NULL
-      | Token::RETURN
-      | Token::SUPER
-      | Token::SWITCH
-      | Token::THIS
-      | Token::THROW
-      | Token::TRUE
-      | Token::TRY
-      | Token::TYPEOF
-      | Token::VAR
-      | Token::VOID
-      | Token::WHILE
-      | Token::WITH
-      | Token::YIELD => true,
+    match self.r#type {
+      TokenType::AWAIT
+      | TokenType::BREAK
+      | TokenType::CASE
+      | TokenType::CATCH
+      | TokenType::CLASS
+      | TokenType::CONST
+      | TokenType::CONTINUE
+      | TokenType::DEBUGGER
+      | TokenType::DEFAULT
+      | TokenType::DELETE
+      | TokenType::DO
+      | TokenType::ELSE
+      | TokenType::ENUM
+      | TokenType::EXPORT
+      | TokenType::EXTENDS
+      | TokenType::FALSE
+      | TokenType::FINALLY
+      | TokenType::FOR
+      | TokenType::FUNCTION
+      | TokenType::IF
+      | TokenType::IMPORT
+      | TokenType::IN
+      | TokenType::INSTANCEOF
+      | TokenType::NEW
+      | TokenType::NULL
+      | TokenType::RETURN
+      | TokenType::SUPER
+      | TokenType::SWITCH
+      | TokenType::THIS
+      | TokenType::THROW
+      | TokenType::TRUE
+      | TokenType::TRY
+      | TokenType::TYPEOF
+      | TokenType::VAR
+      | TokenType::VOID
+      | TokenType::WHILE
+      | TokenType::WITH
+      | TokenType::YIELD => true,
       _ => false,
     }
   }

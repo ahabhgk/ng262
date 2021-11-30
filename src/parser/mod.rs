@@ -1,12 +1,11 @@
 use std::collections::HashSet;
 
-use self::scope::Scope;
+use self::{error::SyntaxError, scope::Scope};
 
+pub mod error;
 pub mod lexer;
 pub mod scope;
 pub mod tokens;
-
-pub struct SyntaxError {}
 
 struct State {
   has_top_level_await: bool,
@@ -20,4 +19,10 @@ pub struct Parser {
   earlyErrors: HashSet<SyntaxError>,
   state: State,
   scope: Scope,
+}
+
+impl Parser {
+  fn is_strict_mode(&self) -> bool {
+    self.state.strict
+  }
 }
