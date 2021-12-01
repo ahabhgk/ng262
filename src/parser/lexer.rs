@@ -1,7 +1,6 @@
-use std::{
-  iter::Peekable,
-  str::{CharIndices, Chars},
-};
+use std::str::Chars;
+
+use unicode_xid::UnicodeXID;
 
 use super::{
   error::{SyntaxError, SyntaxErrorTemplate},
@@ -26,6 +25,18 @@ fn is_whitespace(c: char) -> bool {
 
 fn is_decimal_digit(c: char) -> bool {
   c.is_digit(10)
+}
+
+fn is_identifier_start(c: char) -> bool {
+  match c {
+    'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l'
+    | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x'
+    | 'y' | 'z' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J'
+    | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V'
+    | 'W' | 'X' | 'Y' | 'Z' | '$' | '_' | '\\' => true,
+    _ if c.is_xid_start() => true,
+    _ => false,
+  }
 }
 
 struct Input<'a> {
@@ -53,12 +64,16 @@ impl<'a> Input<'a> {
     self.get(self.index + 1)
   }
 
-  pub fn skip(&mut self, num: usize) {
-    self.index += num;
+  pub fn forward(&mut self) {
+    self.index += 1;
+  }
+
+  pub fn backward(&mut self) {
+    self.index -= 1;
   }
 
   pub fn next(&mut self) -> Option<char> {
-    self.skip(1);
+    self.forward();
     self.current()
   }
 
@@ -131,35 +146,37 @@ impl<'a> Lexer<'a> {
       ));
     }
     let c = c.unwrap();
-    match c {
-      '(' | ')' | '{' | '}' | '[' | ']' | ':' | ';' | ',' | '~' | '`' => {
-        self.source.skip(1);
-        return Ok(self.create_token(
-          TokenType::from_single(c),
-          position_for_next_token,
-          line_for_next_token,
-          column_for_next_token,
-        ));
-      }
-      // ? ?. ?? ??=
-      '?' => match self.source.next() {
-        Some('.') => {
-          if let Some(c1) = self.source.peek() {
-            if !is_decimal_digit(c1) {
-              self.source.skip(1);
-              return Ok(self.create_token(
-                TokenType::OPTIONAL,
-                position_for_next_token,
-                line_for_next_token,
-                column_for_next_token,
-              ));
+
+    // fast path for usual case
+    if c < char::from(127) {
+      match c {
+        '(' | ')' | '{' | '}' | '[' | ']' | ':' | ';' | ',' | '~' | '`' => {
+          self.source.forward();
+          return Ok(self.create_token(
+            TokenType::from_single(c),
+            position_for_next_token,
+            line_for_next_token,
+            column_for_next_token,
+          ));
+        }
+        // ? ?. ?? ??=
+        '?' => match self.source.next() {
+          Some('.') => {
+            if let Some(c) = self.source.peek() {
+              if !is_decimal_digit(c) {
+                self.source.forward();
+                return Ok(self.create_token(
+                  TokenType::OPTIONAL,
+                  position_for_next_token,
+                  line_for_next_token,
+                  column_for_next_token,
+                ));
+              }
             }
           }
-        }
-        Some('?') => {
-          if let Some(c1) = self.source.next() {
-            if c1 == '=' {
-              self.source.skip(1);
+          Some('?') => match self.source.next() {
+            Some('=') => {
+              self.source.forward();
               return Ok(self.create_token(
                 TokenType::ASSIGN_NULLISH,
                 position_for_next_token,
@@ -167,48 +184,507 @@ impl<'a> Lexer<'a> {
                 column_for_next_token,
               ));
             }
+            _ => {
+              return Ok(self.create_token(
+                TokenType::NULLISH,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ))
+            }
+          },
+          _ => {
+            return Ok(self.create_token(
+              TokenType::CONDITIONAL,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
           }
-          return Ok(self.create_token(
-            TokenType::NULLISH,
-            position_for_next_token,
-            line_for_next_token,
-            column_for_next_token,
-          ));
+        },
+        // < <= << <<=
+        '<' => match self.source.next() {
+          Some('=') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::LTE,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          Some('<') => match self.source.next() {
+            Some('=') => {
+              self.source.forward();
+              return Ok(self.create_token(
+                TokenType::ASSIGN_SHL,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ));
+            }
+            _ => {
+              return Ok(self.create_token(
+                TokenType::SHL,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ))
+            }
+          },
+          _ => {
+            return Ok(self.create_token(
+              TokenType::LT,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        // > >= >> >>= >>> >>>=
+        '>' => match self.source.next() {
+          Some('=') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::GTE,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          Some('>') => match self.source.next() {
+            Some('>') => match self.source.next() {
+              Some('=') => {
+                self.source.forward();
+                return Ok(self.create_token(
+                  TokenType::ASSIGN_SHR,
+                  position_for_next_token,
+                  line_for_next_token,
+                  column_for_next_token,
+                ));
+              }
+              _ => {
+                return Ok(self.create_token(
+                  TokenType::SHR,
+                  position_for_next_token,
+                  line_for_next_token,
+                  column_for_next_token,
+                ));
+              }
+            },
+            Some('=') => {
+              self.source.forward();
+              return Ok(self.create_token(
+                TokenType::ASSIGN_SAR,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ));
+            }
+            _ => {
+              return Ok(self.create_token(
+                TokenType::SAR,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ));
+            }
+          },
+          _ => {
+            return Ok(self.create_token(
+              TokenType::GT,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+        },
+        // = == === =>
+        '=' => match self.source.next() {
+          Some('=') => match self.source.next() {
+            Some('=') => {
+              self.source.forward();
+              return Ok(self.create_token(
+                TokenType::EQ_STRICT,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ));
+            }
+            _ => {
+              return Ok(self.create_token(
+                TokenType::EQ,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ))
+            }
+          },
+          Some('>') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::ARROW,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          _ => {
+            return Ok(self.create_token(
+              TokenType::ASSIGN,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        // ! != !==
+        '!' => match self.source.next() {
+          Some('=') => match self.source.next() {
+            Some('=') => {
+              self.source.forward();
+              return Ok(self.create_token(
+                TokenType::NE_STRICT,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ));
+            }
+            _ => {
+              return Ok(self.create_token(
+                TokenType::NE,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ))
+            }
+          },
+          _ => {
+            return Ok(self.create_token(
+              TokenType::NOT,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        // + ++ +=
+        '+' => match self.source.next() {
+          Some('+') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::INC,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          Some('=') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::ASSIGN_ADD,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          _ => {
+            return Ok(self.create_token(
+              TokenType::ADD,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        // - -- -=
+        '-' => match self.source.next() {
+          Some('-') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::DEC,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          Some('=') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::ASSIGN_SUB,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          _ => {
+            return Ok(self.create_token(
+              TokenType::SUB,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        // * *= ** **=
+        '*' => match self.source.next() {
+          Some('=') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::ASSIGN_MUL,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          Some('*') => match self.source.next() {
+            Some('=') => {
+              self.source.forward();
+              return Ok(self.create_token(
+                TokenType::ASSIGN_EXP,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ));
+            }
+            _ => {
+              return Ok(self.create_token(
+                TokenType::EXP,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ))
+            }
+          },
+          _ => {
+            return Ok(self.create_token(
+              TokenType::MUL,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        // % %=
+        '%' => match self.source.next() {
+          Some('=') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::ASSIGN_MOD,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          _ => {
+            return Ok(self.create_token(
+              TokenType::MOD,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        // / /=
+        '/' => match self.source.next() {
+          Some('=') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::ASSIGN_DIV,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          _ => {
+            return Ok(self.create_token(
+              TokenType::DIV,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        // & && &= &&=
+        '&' => match self.source.next() {
+          Some('&') => match self.source.next() {
+            Some('=') => {
+              self.source.forward();
+              return Ok(self.create_token(
+                TokenType::ASSIGN_AND,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ));
+            }
+            _ => {
+              return Ok(self.create_token(
+                TokenType::AND,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ))
+            }
+          },
+          Some('=') => {
+            return Ok(self.create_token(
+              TokenType::ASSIGN_BIT_AND,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+          _ => {
+            return Ok(self.create_token(
+              TokenType::BIT_AND,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        // | || |= ||=
+        '|' => match self.source.next() {
+          Some('|') => match self.source.next() {
+            Some('=') => {
+              self.source.forward();
+              return Ok(self.create_token(
+                TokenType::ASSIGN_OR,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ));
+            }
+            _ => {
+              return Ok(self.create_token(
+                TokenType::OR,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ))
+            }
+          },
+          Some('=') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::ASSIGN_BIT_OR,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          _ => {
+            return Ok(self.create_token(
+              TokenType::BIT_OR,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        // ^ ^=
+        '^' => match self.source.next() {
+          Some('=') => {
+            self.source.forward();
+            return Ok(self.create_token(
+              TokenType::ASSIGN_BIT_XOR,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ));
+          }
+          _ => {
+            return Ok(self.create_token(
+              TokenType::BIT_XOR,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        // . ... NUMBER
+        '.' => match self.source.next() {
+          Some('.') => {
+            if let Some('.') = self.source.next() {
+              self.source.forward();
+              return Ok(self.create_token(
+                TokenType::ELLIPSIS,
+                position_for_next_token,
+                line_for_next_token,
+                column_for_next_token,
+              ));
+            }
+          }
+          Some(c) if is_decimal_digit(c) => {
+            self.source.backward();
+            return self.scan_number();
+          }
+          _ => {
+            return Ok(self.create_token(
+              TokenType::PERIOD,
+              position_for_next_token,
+              line_for_next_token,
+              column_for_next_token,
+            ))
+          }
+        },
+        '"' | '\'' => return self.scan_string(c),
+        '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
+          self.source.backward();
+          return self.scan_number();
         }
+        'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k'
+        | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v'
+        | 'w' | 'x' | 'y' | 'z' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'
+        | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R'
+        | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '$' | '_' | '\\' => {
+          return self.scan_identifier_or_keyword(false)
+        }
+        '#' => return self.scan_identifier_or_keyword(true),
         _ => {
-          return Ok(self.create_token(
-            TokenType::CONDITIONAL,
-            position_for_next_token,
-            line_for_next_token,
-            column_for_next_token,
-          ))
-        }
-      },
-      // < <= << <<=
-      '<' => match self.source.next() {
-        
-      },
-      _ => {
-        return Err(
-          self.create_syntax_error(
+          return Err(self.create_syntax_error(
             position,
             SyntaxErrorTemplate::UnexpectedToken,
-          ),
-        )
+          ))
+        }
       }
     }
 
+    if is_identifier_start(c) {
+      return self.scan_identifier_or_keyword(false);
+    }
+
+    return Err(
+      self.create_syntax_error(position, SyntaxErrorTemplate::UnexpectedToken),
+    );
+  }
+
+  /// See https://tc39.es/ecma262/#sec-literals-numeric-literals
+  fn scan_number(&self) -> Result<Token, SyntaxError> {
+    todo!()
+  }
+
+  /// See https://tc39.es/ecma262/#sec-literals-string-literals
+  fn scan_string(&self, quote: char) -> Result<Token, SyntaxError> {
+    todo!()
+  }
+
+  /// See https://tc39.es/ecma262/#sec-names-and-keywords
+  fn scan_identifier_or_keyword(
+    &self,
+    is_private: bool,
+  ) -> Result<Token, SyntaxError> {
     todo!()
   }
 
   /// Skip comments or whitespaces.
   ///
-  /// https://tc39.es/ecma262/#sec-white-space
+  /// See https://tc39.es/ecma262/#sec-white-space, https://tc39.es/ecma262/#sec-comments
   fn skip_space(&mut self) -> Result<(), SyntaxError> {
     while let Some(c) = self.source.current() {
       match c {
         ' ' | '\t' => {
-          self.source.skip(1);
+          self.source.forward();
         }
         '/' => match self.source.peek() {
           Some('/') => self.skip_line_comment(),
@@ -217,7 +693,7 @@ impl<'a> Lexer<'a> {
         },
         _ => {
           if is_whitespace(c) {
-            self.source.skip(1);
+            self.source.forward();
           } else if is_line_terminator(c) {
             self.terminate_line(c);
           } else {
@@ -229,10 +705,11 @@ impl<'a> Lexer<'a> {
     Ok(())
   }
 
+  /// See https://tc39.es/ecma262/#sec-line-terminators
   fn terminate_line(&mut self, c: char) {
-    self.source.skip(1);
+    self.source.forward();
     if c == '\r' && self.source.current() == Some('\n') {
-      self.source.skip(1);
+      self.source.forward();
     }
     self.line += 1;
     self.column_offset = self.source.position();
@@ -240,30 +717,33 @@ impl<'a> Lexer<'a> {
   }
 
   fn skip_line_comment(&mut self) {
-    self.source.skip(2);
+    self.source.forward();
+    self.source.forward();
     while let Some(c) = self.source.current() {
       if is_line_terminator(c) {
         self.terminate_line(c)
       } else {
-        self.source.skip(1);
+        self.source.forward();
       }
     }
   }
 
   fn skip_block_comment(&mut self) -> Result<(), SyntaxError> {
     let position = self.source.position();
-    self.source.skip(2);
+    self.source.forward();
+    self.source.forward();
     while let Some(c) = self.source.current() {
       match self.source.peek() {
         Some(p) => {
           if c == '*' && p == '/' {
-            self.source.skip(2);
+            self.source.forward();
+            self.source.forward();
             return Ok(());
           }
           if is_line_terminator(c) {
             self.terminate_line(c);
           } else {
-            self.source.skip(1);
+            self.source.forward();
           }
         }
         None => {
