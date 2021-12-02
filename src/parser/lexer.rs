@@ -4,6 +4,7 @@ use unicode_xid::UnicodeXID;
 
 use super::{
   error::{SyntaxError, SyntaxErrorTemplate},
+  strict::{self, Strict},
   tokens::{lookup_keyword, Token, TokenType, TokenValue},
 };
 
@@ -117,22 +118,24 @@ impl<'a> Input<'a> {
   }
 }
 
-pub struct Lexer<'a> {
-  source: Input<'a>,
+pub struct Lexer<'i, 's> {
+  source: Input<'i>,
   line: usize,
   column_offset: usize,
   line_terminator_before_next_token: bool,
   had_escaped: bool,
+  strict: &'s mut Strict,
 }
 
-impl<'a> Lexer<'a> {
-  pub fn new(source: &'a str) -> Self {
+impl<'i, 's> Lexer<'i, 's> {
+  pub fn new(source: &'i str, strict: &'s mut Strict) -> Self {
     Self {
       source: Input::new(source),
       line: 1,
       column_offset: 0,
       line_terminator_before_next_token: false,
       had_escaped: false,
+      strict,
     }
   }
 
@@ -656,7 +659,15 @@ impl<'a> Lexer<'a> {
             ))
           }
         },
-        '"' | '\'' => return self.scan_string(c),
+        '"' | '\'' => {
+          let token_type = self.scan_string(c)?;
+          return Ok(self.create_token(
+            token_type,
+            position_for_next_token,
+            line_for_next_token,
+            column_for_next_token,
+          ));
+        }
         '0'..='9' => {
           self.source.backward();
           return self.scan_number();
@@ -709,8 +720,52 @@ impl<'a> Lexer<'a> {
   }
 
   /// See https://tc39.es/ecma262/#sec-literals-string-literals
-  fn scan_string(&self, quote: char) -> Result<Token, SyntaxError> {
-    todo!()
+  fn scan_string(&mut self, quote: char) -> Result<TokenType, SyntaxError> {
+    let mut buffer = String::new();
+    loop {
+      match self.source.current() {
+        None => {
+          return Err(self.create_syntax_error(
+            self.source.position(),
+            SyntaxErrorTemplate::UnterminatedString,
+          ))
+        }
+        Some(c) => {
+          if c == quote {
+            self.source.forward();
+            break;
+          }
+          if c == '\r' || c == '\n' {
+            return Err(self.create_syntax_error(
+              self.source.position(),
+              SyntaxErrorTemplate::UnterminatedString,
+            ));
+          }
+          self.source.forward();
+          if c == '\\' {
+            match self.source.current() {
+              None => {
+                return Err(self.create_syntax_error(
+                  self.source.position(),
+                  SyntaxErrorTemplate::UnterminatedString,
+                ))
+              }
+              Some(p) => {
+                if is_line_terminator(p) {
+                  self.terminate_line(p)
+                } else {
+                  buffer.push(self.scan_escape_sequence()?)
+                }
+              }
+            }
+          } else {
+            buffer.push(c);
+          }
+        }
+      }
+    }
+
+    Ok(TokenType::STRING(buffer))
   }
 
   /// See https://tc39.es/ecma262/#sec-names-and-keywords
@@ -815,6 +870,60 @@ impl<'a> Lexer<'a> {
       }
     }
     Ok(n)
+  }
+
+  fn scan_escape_sequence(&mut self) -> Result<char, SyntaxError> {
+    // unwrap: only used by scan_string when `self.source.current()` is not None
+    match self.source.current().unwrap() {
+      'b' => {
+        self.source.forward();
+        return Ok('\u{0008}');
+      }
+      't' => {
+        self.source.forward();
+        return Ok('\t');
+      }
+      'n' => {
+        self.source.forward();
+        return Ok('\n');
+      }
+      'v' => {
+        self.source.forward();
+        return Ok('\u{000b}');
+      }
+      'f' => {
+        self.source.forward();
+        return Ok('\u{000c}');
+      }
+      'r' => {
+        self.source.forward();
+        return Ok('\r');
+      }
+      'x' => {
+        self.source.forward();
+        return Ok(char::from_u32(self.scan_hex(2)?).unwrap());
+      }
+      'u' => {
+        self.source.forward();
+        return Ok(char::from_u32(self.scan_code_point()?).unwrap());
+      }
+      c => {
+        if c == '0'
+          && matches!(self.source.peek(), Some(p) if is_decimal_digit(p))
+        {
+          self.source.forward();
+          return Ok('\u{0000}');
+        } else if self.strict.is_strict_mode() && is_decimal_digit(c) {
+          return Err(self.create_syntax_error(
+            self.source.position(),
+            SyntaxErrorTemplate::IllegalOctalEscape,
+          ));
+        } else {
+          self.source.forward();
+          return Ok(c);
+        }
+      }
+    }
   }
 
   /// Skip comments or whitespaces.

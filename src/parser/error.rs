@@ -20,6 +20,8 @@ pub enum SyntaxErrorTemplate {
   UnexpectedToken,
   InvalidUnicodeEscape,
   InvalidCodePoint,
+  UnterminatedString,
+  IllegalOctalEscape,
 }
 
 impl fmt::Display for SyntaxErrorTemplate {
@@ -29,6 +31,10 @@ impl fmt::Display for SyntaxErrorTemplate {
       Self::UnexpectedToken => write!(f, "Unexpected token"),
       Self::InvalidUnicodeEscape => write!(f, "Invalid unicode escape"),
       Self::InvalidCodePoint => write!(f, "Not a valid code point"),
+      Self::UnterminatedString => {
+        write!(f, "Missing \' or \" after string literal")
+      }
+      Self::IllegalOctalEscape => write!(f, "Illegal octal escape"),
     }
   }
 }

@@ -131,7 +131,7 @@ pub enum TokenType {
   TRUE,  // true
   FALSE, // false
   NUMBER,
-  STRING,
+  STRING(String),
   BIGINT,
 
   // BEGIN Callable
