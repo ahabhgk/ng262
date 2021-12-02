@@ -151,7 +151,7 @@ pub enum TokenType {
 
   ENUM, // enum
 
-  ESCAPED_KEYWORD,
+  ESCAPED_KEYWORD(String),
 }
 
 impl TokenType {
@@ -183,7 +183,7 @@ pub struct Token {
   pub line: usize,
   pub column: usize,
   pub had_line_terminator_before: bool,
-  pub escaped: bool,
+  pub had_escaped: bool,
 }
 
 impl Token {
@@ -262,5 +262,50 @@ pub fn is_reserved_word_strict(s: &str) -> bool {
     "implements" | "interface" | "let" | "package" | "private"
     | "protected" | "public" | "static" | "yield" => true,
     _ => false,
+  }
+}
+
+pub fn lookup_keyword(s: &str, has_escaped: bool) -> Option<TokenType> {
+  match s {
+    "await" => Some(TokenType::AWAIT),
+    "break" => Some(TokenType::BREAK),
+    "case" => Some(TokenType::CASE),
+    "catch" => Some(TokenType::CATCH),
+    "class" => Some(TokenType::CLASS),
+    "const" => Some(TokenType::CONST),
+    "continue" => Some(TokenType::CONTINUE),
+    "debugger" => Some(TokenType::DEBUGGER),
+    "default" => Some(TokenType::DEFAULT),
+    "delete" => Some(TokenType::DELETE),
+    "do" => Some(TokenType::DO),
+    "else" => Some(TokenType::ELSE),
+    "enum" => Some(TokenType::ENUM),
+    "export" => Some(TokenType::EXPORT),
+    "extends" => Some(TokenType::EXTENDS),
+    "false" => Some(TokenType::FALSE),
+    "finally" => Some(TokenType::FINALLY),
+    "for" => Some(TokenType::FOR),
+    "function" => Some(TokenType::FUNCTION),
+    "if" => Some(TokenType::IF),
+    "import" => Some(TokenType::IMPORT),
+    "in" => Some(TokenType::IN),
+    "instanceof" => Some(TokenType::INSTANCEOF),
+    "new" => Some(TokenType::NEW),
+    "null" => Some(TokenType::NULL),
+    "return" => Some(TokenType::RETURN),
+    "super" => Some(TokenType::SUPER),
+    "switch" => Some(TokenType::SWITCH),
+    "this" => Some(TokenType::THIS),
+    "throw" => Some(TokenType::THROW),
+    "true" => Some(TokenType::TRUE),
+    "try" => Some(TokenType::TRY),
+    "typeof" => Some(TokenType::TYPEOF),
+    "var" => Some(TokenType::VAR),
+    "void" => Some(TokenType::VOID),
+    "while" => Some(TokenType::WHILE),
+    "with" => Some(TokenType::WITH),
+    "yield" => Some(TokenType::YIELD),
+    _ if has_escaped => Some(TokenType::ESCAPED_KEYWORD(s.to_owned())),
+    _ => None,
   }
 }

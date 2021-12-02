@@ -4,7 +4,7 @@ use unicode_xid::UnicodeXID;
 
 use super::{
   error::{SyntaxError, SyntaxErrorTemplate},
-  tokens::{Token, TokenType, TokenValue},
+  tokens::{lookup_keyword, Token, TokenType, TokenValue},
 };
 
 fn is_line_terminator(c: char) -> bool {
@@ -27,16 +27,36 @@ fn is_decimal_digit(c: char) -> bool {
   c.is_digit(10)
 }
 
+fn is_hex_digit(c: char) -> bool {
+  c.is_digit(16)
+}
+
 fn is_identifier_start(c: char) -> bool {
-  match c {
-    'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l'
-    | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x'
-    | 'y' | 'z' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J'
-    | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V'
-    | 'W' | 'X' | 'Y' | 'Z' | '$' | '_' | '\\' => true,
-    _ if c.is_xid_start() => true,
-    _ => false,
-  }
+  c.is_ascii_alphanumeric()
+    || c == '$'
+    || c == '_'
+    || c == '\\'
+    || c.is_xid_start()
+}
+
+fn is_identifier_part(c: char) -> bool {
+  c.is_ascii_alphanumeric()
+    || c == '$'
+    || c == '_'
+    || c == '\\'
+    || c == '\u{200C}'
+    || c == '\u{200D}'
+    || c.is_xid_continue()
+}
+
+fn is_lead_surrogate(cp: char) -> bool {
+  cp >= unsafe { char::from_u32_unchecked(0xD800) }
+    && cp <= unsafe { char::from_u32_unchecked(0xDBFF) }
+}
+
+fn is_trail_surrogate(cp: char) -> bool {
+  cp >= unsafe { char::from_u32_unchecked(0xDC00) }
+    && cp <= unsafe { char::from_u32_unchecked(0xDFFF) }
 }
 
 struct Input<'a> {
@@ -81,6 +101,15 @@ impl<'a> Input<'a> {
     self.iter.clone().nth(i)
   }
 
+  pub fn index_of(&self, c: char) -> Option<usize> {
+    for (i, ch) in self.iter.clone().skip(self.index).enumerate() {
+      if ch == c {
+        return Some(i);
+      }
+    }
+    None
+  }
+
   pub fn slice(&self, start: usize, end: usize) -> String {
     let str = self.iter.as_str();
     let str = &str[start..end];
@@ -92,9 +121,8 @@ pub struct Lexer<'a> {
   source: Input<'a>,
   line: usize,
   column_offset: usize,
-  // scanned_value: Option<>
   line_terminator_before_next_token: bool,
-  escape_index: isize,
+  had_escaped: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -104,7 +132,7 @@ impl<'a> Lexer<'a> {
       line: 1,
       column_offset: 0,
       line_terminator_before_next_token: false,
-      escape_index: -1,
+      had_escaped: false,
     }
   }
 
@@ -123,7 +151,7 @@ impl<'a> Lexer<'a> {
       line,
       column,
       had_line_terminator_before: self.line_terminator_before_next_token,
-      escaped: self.escape_index != -1,
+      had_escaped: self.had_escaped,
     }
   }
 
@@ -629,18 +657,28 @@ impl<'a> Lexer<'a> {
           }
         },
         '"' | '\'' => return self.scan_string(c),
-        '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
+        '0'..='9' => {
           self.source.backward();
           return self.scan_number();
         }
-        'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k'
-        | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v'
-        | 'w' | 'x' | 'y' | 'z' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'
-        | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R'
-        | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '$' | '_' | '\\' => {
-          return self.scan_identifier_or_keyword(false)
+        'a'..='z' | 'A'..='Z' | '$' | '_' | '\\' => {
+          let token_type = self.scan_identifier_or_keyword(false)?;
+          return Ok(self.create_token(
+            token_type,
+            position_for_next_token,
+            line_for_next_token,
+            column_for_next_token,
+          ));
         }
-        '#' => return self.scan_identifier_or_keyword(true),
+        '#' => {
+          let token_type = self.scan_identifier_or_keyword(true)?;
+          return Ok(self.create_token(
+            token_type,
+            position_for_next_token,
+            line_for_next_token,
+            column_for_next_token,
+          ));
+        }
         _ => {
           return Err(self.create_syntax_error(
             position,
@@ -650,8 +688,14 @@ impl<'a> Lexer<'a> {
       }
     }
 
-    if is_identifier_start(c) {
-      return self.scan_identifier_or_keyword(false);
+    if is_lead_surrogate(c) || is_identifier_start(c) {
+      let token_type = self.scan_identifier_or_keyword(false)?;
+      return Ok(self.create_token(
+        token_type,
+        position_for_next_token,
+        line_for_next_token,
+        column_for_next_token,
+      ));
     }
 
     return Err(
@@ -671,10 +715,106 @@ impl<'a> Lexer<'a> {
 
   /// See https://tc39.es/ecma262/#sec-names-and-keywords
   fn scan_identifier_or_keyword(
-    &self,
+    &mut self,
     is_private: bool,
-  ) -> Result<Token, SyntaxError> {
-    todo!()
+  ) -> Result<TokenType, SyntaxError> {
+    let mut buffer = String::new();
+    let mut had_escaped = false;
+    let mut check: fn(char) -> bool = is_identifier_start;
+    while let Some(c) = self.source.current() {
+      if c == '\\' {
+        if !had_escaped {
+          had_escaped = true;
+        }
+        if matches!(self.source.next(), Some(c) if c != 'u') {
+          return Err(self.create_syntax_error(
+            self.source.position(),
+            SyntaxErrorTemplate::InvalidUnicodeEscape,
+          ));
+        }
+        self.source.forward();
+        let raw = char::from_u32(self.scan_code_point()?).unwrap();
+        if !check(c) {
+          return Err(self.create_syntax_error(
+            self.source.position(),
+            SyntaxErrorTemplate::InvalidUnicodeEscape,
+          ));
+        }
+        buffer.push(raw)
+      } else if is_lead_surrogate(c) {
+        todo!("CombineSurrogatePair is not supported yet")
+      } else if check(c) {
+        buffer.push(c);
+        self.source.forward();
+      } else {
+        break;
+      }
+
+      check = is_identifier_part;
+    }
+
+    match lookup_keyword(&buffer, had_escaped) {
+      Some(t) if !is_private => Ok(t),
+      _ => {
+        self.had_escaped = had_escaped;
+        if is_private {
+          Ok(TokenType::PRIVATE_IDENTIFIER)
+        } else {
+          Ok(TokenType::IDENTIFIER)
+        }
+      }
+    }
+  }
+
+  fn scan_code_point(&mut self) -> Result<u32, SyntaxError> {
+    if let Some('{') = self.source.current() {
+      match self.source.index_of('}') {
+        Some(end) => {
+          self.source.forward();
+          let code = self.scan_hex(end - self.source.position())?;
+          self.source.forward();
+          if code > 0x10FFFF {
+            Err(self.create_syntax_error(
+              self.source.position(),
+              SyntaxErrorTemplate::InvalidCodePoint,
+            ))
+          } else {
+            Ok(code)
+          }
+        }
+        None => Err(self.create_syntax_error(
+          self.source.position(),
+          SyntaxErrorTemplate::InvalidUnicodeEscape,
+        )),
+      }
+    } else {
+      self.scan_hex(4)
+    }
+  }
+
+  fn scan_hex(&mut self, len: usize) -> Result<u32, SyntaxError> {
+    if len == 0 {
+      return Err(self.create_syntax_error(
+        self.source.position(),
+        SyntaxErrorTemplate::InvalidCodePoint,
+      ));
+    }
+    let mut n = 0;
+    for _ in 0..len {
+      match self.source.current() {
+        Some(c) if is_hex_digit(c) => {
+          self.source.forward();
+          n = (n << 4) | c.to_digit(16).unwrap();
+        }
+        _ => {
+          return Err(self.create_syntax_error(
+            self.source.position(),
+            SyntaxErrorTemplate::UnexpectedToken,
+          ))
+        }
+      }
+    }
+    Ok(n)
   }
 
   /// Skip comments or whitespaces.

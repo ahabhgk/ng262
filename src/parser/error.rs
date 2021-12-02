@@ -18,6 +18,8 @@ impl fmt::Display for SyntaxError {
 pub enum SyntaxErrorTemplate {
   UnterminatedComment,
   UnexpectedToken,
+  InvalidUnicodeEscape,
+  InvalidCodePoint,
 }
 
 impl fmt::Display for SyntaxErrorTemplate {
@@ -25,6 +27,8 @@ impl fmt::Display for SyntaxErrorTemplate {
     match self {
       Self::UnterminatedComment => write!(f, "Missing */ after comment"),
       Self::UnexpectedToken => write!(f, "Unexpected token"),
+      Self::InvalidUnicodeEscape => write!(f, "Invalid unicode escape"),
+      Self::InvalidCodePoint => write!(f, "Not a valid code point"),
     }
   }
 }
