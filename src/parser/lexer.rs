@@ -1,18 +1,17 @@
 use std::str::Chars;
 
+use lexical::parse_float_options;
+use num_bigint::BigInt;
 use unicode_xid::UnicodeXID;
 
 use super::{
   error::{SyntaxError, SyntaxErrorTemplate},
-  strict::{self, Strict},
-  tokens::{lookup_keyword, Token, TokenType, TokenValue},
+  strict::Strict,
+  tokens::{lookup_keyword, Token, TokenType},
 };
 
 fn is_line_terminator(c: char) -> bool {
-  match c {
-    '\r' | '\n' | '\u{2028}' | '\u{2029}' => true,
-    _ => false,
-  }
+  matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}')
 }
 
 fn is_whitespace(c: char) -> bool {
@@ -30,6 +29,14 @@ fn is_decimal_digit(c: char) -> bool {
 
 fn is_hex_digit(c: char) -> bool {
   c.is_digit(16)
+}
+
+fn is_octal_digit(c: char) -> bool {
+  c.is_digit(8)
+}
+
+fn is_binary_digit(c: char) -> bool {
+  c.is_digit(2)
 }
 
 fn is_identifier_start(c: char) -> bool {
@@ -105,7 +112,7 @@ impl<'a> Input<'a> {
   pub fn index_of(&self, c: char) -> Option<usize> {
     for (i, ch) in self.iter.clone().skip(self.index).enumerate() {
       if ch == c {
-        return Some(i);
+        return Some(i + self.index);
       }
     }
     None
@@ -141,14 +148,13 @@ impl<'i, 's> Lexer<'i, 's> {
 
   fn create_token(
     &self,
-    r#type: TokenType,
+    token_type: TokenType,
     start_index: usize,
     line: usize,
     column: usize,
   ) -> Token {
     Token {
-      r#type,
-      value: TokenValue {},
+      token_type,
       start_index,
       end_index: self.source.position(),
       line,
@@ -168,8 +174,8 @@ impl<'i, 's> Lexer<'i, 's> {
     let column_for_next_token = position - self.column_offset + 1;
 
     let token_type = if let Some(c) = self.source.current() {
-      // fast path for usual case
       if c < char::from(127) {
+        // fast path for usual case
         match c {
           '(' | ')' | '{' | '}' | '[' | ']' | ':' | ';' | ',' | '~' | '`' => {
             self.source.forward();
@@ -364,17 +370,17 @@ impl<'i, 's> Lexer<'i, 's> {
             _ => Some(TokenType::PERIOD),
           },
           '"' | '\'' => {
-            let token_type = self.scan_string(c)?;
-            Some(token_type)
+            self.source.forward();
+            Some(self.scan_string(c)?)
           }
-          '0'..='9' => {
-            self.source.backward();
-            Some(self.scan_number()?)
-          }
+          '0'..='9' => Some(self.scan_number()?),
           'a'..='z' | 'A'..='Z' | '$' | '_' | '\\' => {
             Some(self.scan_identifier_or_keyword(false)?)
           }
-          '#' => Some(self.scan_identifier_or_keyword(true)?),
+          '#' => {
+            self.source.forward();
+            Some(self.scan_identifier_or_keyword(true)?)
+          }
           _ => None,
         }
       } else if is_lead_surrogate(c) || is_identifier_start(c) {
@@ -386,24 +392,143 @@ impl<'i, 's> Lexer<'i, 's> {
       Some(TokenType::EOS)
     };
 
-    token_type
-      .map(|t| {
-        self.create_token(
-          t,
-          position_for_next_token,
-          line_for_next_token,
-          column_for_next_token,
-        )
-      })
-      .ok_or(
+    match token_type {
+      Some(t) => Ok(self.create_token(
+        t,
+        position_for_next_token,
+        line_for_next_token,
+        column_for_next_token,
+      )),
+      None => Err(
         self
           .create_syntax_error(position, SyntaxErrorTemplate::UnexpectedToken),
-      )
+      ),
+    }
   }
 
   /// See https://tc39.es/ecma262/#sec-literals-numeric-literals
-  fn scan_number(&self) -> Result<TokenType, SyntaxError> {
-    todo!()
+  fn scan_number(&mut self) -> Result<TokenType, SyntaxError> {
+    let start = self.source.position();
+    let mut base = 10;
+    let mut check: fn(char) -> bool = is_decimal_digit;
+    // base
+    if self.source.current() == Some('0') {
+      match self.source.next() {
+        Some('x' | 'X') => base = 16,
+        Some('o' | 'O') => base = 8,
+        Some('b' | 'B') => base = 2,
+        Some('e' | 'E' | '.') => {}
+        Some('n') => {
+          self.source.forward();
+          return Ok(TokenType::BIGINT(
+            BigInt::parse_bytes(b"0", 10)
+              .expect("failed to parse string as a bigint"),
+          ));
+        }
+        _ => return Ok(TokenType::NUMBER(0.0)),
+      }
+      check = match base {
+        16 => is_hex_digit,
+        10 => is_decimal_digit,
+        8 => is_octal_digit,
+        2 => is_binary_digit,
+        _ => unreachable!("base is not correct when scan_number"),
+      };
+      if base != 10 {
+        if matches!(self.source.peek(), Some(c) if !check(c)) {
+          return Ok(TokenType::NUMBER(0.0));
+        }
+        self.source.forward();
+      }
+    }
+    // scan
+    macro_rules! scan {
+      () => {{
+        while let Some(c) = self.source.current() {
+          if check(c) {
+            self.source.forward();
+          } else if c == '_' {
+            if matches!(self.source.peek(), Some(p) if !check(p)) {
+              return Err(self.create_syntax_error(
+                self.source.position() + 1,
+                SyntaxErrorTemplate::UnexpectedToken,
+              ));
+            }
+            self.source.forward();
+          } else {
+            break;
+          }
+        }
+      }}
+    }
+    scan!();
+    // n
+    if self.source.current() == Some('n') {
+      let buffer = self
+        .source
+        .slice(start, self.source.position())
+        .replace('_', "");
+      self.source.forward();
+      return Ok(TokenType::BIGINT(
+        BigInt::parse_bytes(buffer.as_bytes(), 10)
+          .expect("failed to parse string as a bigint"),
+      ));
+    }
+    // .
+    if base == 10 && self.source.current() == Some('.') {
+      if let Some('_') = self.source.next() {
+        return Err(self.create_syntax_error(
+          self.source.position(),
+          SyntaxErrorTemplate::UnexpectedToken,
+        ));
+      }
+      scan!();
+    }
+    // e E
+    if base == 10
+      && (self.source.current() == Some('e')
+        || self.source.current() == Some('E'))
+    {
+      self.source.forward();
+      if let Some('_') = self.source.current() {
+        return Err(self.create_syntax_error(
+          self.source.position(),
+          SyntaxErrorTemplate::UnexpectedToken,
+        ));
+      }
+      if let Some('-' | '+') = self.source.current() {
+        self.source.forward();
+      }
+      if let Some('_') = self.source.current() {
+        return Err(self.create_syntax_error(
+          self.source.position(),
+          SyntaxErrorTemplate::UnexpectedToken,
+        ));
+      }
+      scan!();
+    }
+
+    if matches!(self.source.current(), Some(c) if is_identifier_start(c)) {
+      return Err(self.create_syntax_error(
+        self.source.position(),
+        SyntaxErrorTemplate::UnexpectedToken,
+      ));
+    }
+    // parse
+    let buffer = self
+      .source
+      .slice(
+        if base == 10 { start } else { start + 2 },
+        self.source.position(),
+      )
+      .replace('_', "");
+    const FORMAT: u128 = lexical::format::JAVASCRIPT_STRING;
+    let num = lexical::parse_with_options::<f64, _, FORMAT>(
+      buffer,
+      &parse_float_options::JAVASCRIPT_STRING,
+    )
+    .expect("failed to parse string as a js number");
+    Ok(TokenType::NUMBER(num))
   }
 
   /// See https://tc39.es/ecma262/#sec-literals-string-literals
@@ -500,9 +625,9 @@ impl<'i, 's> Lexer<'i, 's> {
       _ => {
         self.had_escaped = had_escaped;
         if is_private {
-          Ok(TokenType::PRIVATE_IDENTIFIER)
+          Ok(TokenType::PRIVATE_IDENTIFIER(buffer))
         } else {
-          Ok(TokenType::IDENTIFIER)
+          Ok(TokenType::IDENTIFIER(buffer))
         }
       }
     }
@@ -564,50 +689,50 @@ impl<'i, 's> Lexer<'i, 's> {
     match self.source.current().unwrap() {
       'b' => {
         self.source.forward();
-        return Ok('\u{0008}');
+        Ok('\u{0008}')
       }
       't' => {
         self.source.forward();
-        return Ok('\t');
+        Ok('\t')
       }
       'n' => {
         self.source.forward();
-        return Ok('\n');
+        Ok('\n')
       }
       'v' => {
         self.source.forward();
-        return Ok('\u{000b}');
+        Ok('\u{000b}')
       }
       'f' => {
         self.source.forward();
-        return Ok('\u{000c}');
+        Ok('\u{000c}')
       }
       'r' => {
         self.source.forward();
-        return Ok('\r');
+        Ok('\r')
       }
       'x' => {
         self.source.forward();
-        return Ok(char::from_u32(self.scan_hex(2)?).unwrap());
+        Ok(char::from_u32(self.scan_hex(2)?).unwrap())
       }
       'u' => {
         self.source.forward();
-        return Ok(char::from_u32(self.scan_code_point()?).unwrap());
+        Ok(char::from_u32(self.scan_code_point()?).unwrap())
       }
       c => {
         if c == '0'
           && matches!(self.source.peek(), Some(p) if is_decimal_digit(p))
         {
           self.source.forward();
-          return Ok('\u{0000}');
+          Ok('\u{0000}')
         } else if self.strict.is_strict_mode() && is_decimal_digit(c) {
-          return Err(self.create_syntax_error(
+          Err(self.create_syntax_error(
             self.source.position(),
             SyntaxErrorTemplate::IllegalOctalEscape,
-          ));
+          ))
         } else {
           self.source.forward();
-          return Ok(c);
+          Ok(c)
         }
       }
     }
@@ -628,10 +753,10 @@ impl<'i, 's> Lexer<'i, 's> {
           _ => return Ok(()),
         },
         _ => {
-          if is_whitespace(c) {
-            self.source.forward();
-          } else if is_line_terminator(c) {
+          if is_line_terminator(c) {
             self.terminate_line(c);
+          } else if is_whitespace(c) {
+            self.source.forward();
           } else {
             return Ok(());
           }
@@ -657,7 +782,8 @@ impl<'i, 's> Lexer<'i, 's> {
     self.source.forward();
     while let Some(c) = self.source.current() {
       if is_line_terminator(c) {
-        self.terminate_line(c)
+        self.terminate_line(c);
+        break;
       } else {
         self.source.forward();
       }
@@ -748,5 +874,245 @@ impl<'i, 's> Lexer<'i, 's> {
       message,
       decoration,
     }
+  }
+
+  // fn unexpected(&self) -> SyntaxError {
+  //   return self.create_syntax_error(
+  //     self.source.position(),
+  //     SyntaxErrorTemplate::UnexpectedToken,
+  //   );
+  // }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  macro_rules! assert_token_type {
+    ($l: ident, $t: expr) => {{
+      let token_type = $t;
+      let expected = $l.next_token().unwrap().token_type;
+      assert_eq!(expected, token_type);
+    }};
+    ($l: ident, $($t: expr),* $(,)?) => {{
+      let ts = vec![$($t),*];
+      for t in ts {
+        assert_token_type!($l, t);
+      }
+    }}
+  }
+
+  #[test]
+  fn comments() {
+    let source = r#"/*
+block comment
+*/{
+// line comment
+}
+"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::LBRACE,
+      TokenType::RBRACE,
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn number_dot_dot() {
+    let source = "123..toString()";
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::NUMBER(123.0),
+      TokenType::PERIOD,
+      TokenType::IDENTIFIER("toString".to_owned()),
+      TokenType::LPAREN,
+      TokenType::RPAREN,
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn identifier_escape_unicode() {
+    let source = r#"a\u0061"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::IDENTIFIER("aa".to_owned()),
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn identifier_escape_unicode_2() {
+    let source = r#"℘\u2118"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::IDENTIFIER("℘℘".to_owned()),
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn identifier_dollar() {
+    let source = r#"$jq"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::IDENTIFIER("$jq".to_owned()),
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn keyword_escape() {
+    let source = r#"\u{61}wait"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::ESCAPED_KEYWORD("await".to_owned()),
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn private_identifier_escape() {
+    let source = r#"#a\u{61}pple"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::PRIVATE_IDENTIFIER("aapple".to_owned()),
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn string_escape() {
+    let source = r#"'\n'"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::STRING("\n".to_owned()),
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn string_escape_2() {
+    let source = r#"'\\n'"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::STRING("\\n".to_owned()),
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn string_escape_hex() {
+    let source = r#"'\x61'"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::STRING("a".to_owned()),
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn string_escape_long_unicode() {
+    let source = r#"'\u{00000000034}'"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::STRING("4".to_owned()),
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn string_literal() {
+    let source = r#"'ng262'"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::STRING("ng262".to_owned()),
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn number_literal() {
+    let source = r#"123.0"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(lexer, TokenType::NUMBER(123.0), TokenType::EOS);
+  }
+
+  #[test]
+  fn big_int_literal() {
+    let source = r#"9007199254740993n"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::BIGINT(BigInt::parse_bytes(b"9007199254740993", 10).unwrap()),
+      TokenType::EOS
+    );
+  }
+
+  #[test]
+  fn number_exponent() {
+    let source = r#"1e2"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(lexer, TokenType::NUMBER(100.0), TokenType::EOS);
+  }
+
+  #[test]
+  fn number_signed_exponent() {
+    let source = r#"1e-2"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(lexer, TokenType::NUMBER(0.01), TokenType::EOS);
+  }
+
+  #[test]
+  fn number_hex() {
+    let source = r#"0x000000000"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(lexer, TokenType::NUMBER(0.0), TokenType::EOS);
+  }
+
+  #[test]
+  fn number_point() {
+    let source = r#"1.123"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(lexer, TokenType::NUMBER(1.123), TokenType::EOS);
+  }
+
+  #[test]
+  fn number_separator() {
+    let source = r#"123_456_789"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(lexer, TokenType::NUMBER(123_456_789.0), TokenType::EOS);
   }
 }

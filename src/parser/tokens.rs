@@ -1,155 +1,254 @@
+use num_bigint::BigInt;
+
 #[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq)]
 pub enum TokenType {
   // BEGIN PropertyOrCall
   // BEGIN Member
   // BEGIN Template
-  TEMPLATE, // `
+  /// `
+  TEMPLATE,
   // END Template
 
   // BEGIN Property
-  PERIOD, // .
-  LBRACK, // [
+  /// .
+  PERIOD,
+  /// [
+  LBRACK,
   // END Property
   // END Member
-  OPTIONAL, // ?.
-  LPAREN,   // (
+  /// ?.
+  OPTIONAL,
+  /// (
+  LPAREN,
   // END PropertyOrCall
-  RPAREN,      // )
-  RBRACK,      // ]
-  LBRACE,      // {
-  COLON,       // :
-  ELLIPSIS,    // ...
-  CONDITIONAL, // ?
+  /// )
+  RPAREN,
+  /// ]
+  RBRACK,
+  /// {
+  LBRACE,
+  /// :
+  COLON,
+  /// ...
+  ELLIPSIS,
+  /// ?
+  CONDITIONAL,
   // BEGIN AutoSemicolon
-  SEMICOLON, // ;
-  RBRACE,    // }
+  /// ;
+  SEMICOLON,
+  /// }
+  RBRACE,
 
   EOS,
   // END AutoSemicolon
 
   // BEGIN ArrowOrAssign
-  ARROW, // =>
+  /// =>
+  ARROW,
   // BEGIN Assign
-  ASSIGN, // =
+  /// =
+  ASSIGN,
   // Logical
-  ASSIGN_NULLISH, // ??=
-  ASSIGN_OR,      // ||=
-  ASSIGN_AND,     // &&=
+  /// ??=
+  ASSIGN_NULLISH,
+  /// ||=
+  ASSIGN_OR,
+  /// &&=
+  ASSIGN_AND,
 
   // Binop
-  ASSIGN_BIT_OR,  // |=
-  ASSIGN_BIT_XOR, // ^=
-  ASSIGN_BIT_AND, // &=
-  ASSIGN_SHL,     // <<=
-  ASSIGN_SAR,     // >>=
-  ASSIGN_SHR,     // >>>=
-  ASSIGN_MUL,     // *=
-  ASSIGN_DIV,     // /=
-  ASSIGN_MOD,     // %=
-  ASSIGN_EXP,     // **=
+  /// |=
+  ASSIGN_BIT_OR,
+  /// ^=
+  ASSIGN_BIT_XOR,
+  /// &=
+  ASSIGN_BIT_AND,
+  /// <<=
+  ASSIGN_SHL,
+  /// >>=
+  ASSIGN_SAR,
+  /// >>>=
+  ASSIGN_SHR,
+  /// *=
+  ASSIGN_MUL,
+  /// /=
+  ASSIGN_DIV,
+  /// %=
+  ASSIGN_MOD,
+  /// **=
+  ASSIGN_EXP,
 
   // Unop
-  ASSIGN_ADD, // +=
-  ASSIGN_SUB, // -=
+  /// +=
+  ASSIGN_ADD,
+  /// -=
+  ASSIGN_SUB,
   // END Assign
   // END ArrowOrAssign
 
   // Binary operators by precidence
-  COMMA, // ,
+  /// ,
+  COMMA,
 
   // Logical
-  NULLISH, // ??
-  OR,      // ||
-  AND,     // &&
+  /// ??
+  NULLISH,
+  /// ||
+  OR,
+  /// &&
+  AND,
 
   // Binop
-  BIT_OR,  // |
-  BIT_XOR, // ^
-  BIT_AND, // &
-  SHL,     // <<
-  SAR,     // >>
-  SHR,     // >>>
-  MUL,     // *
-  DIV,     // /
-  MOD,     // %
-  EXP,     // **
+  /// |
+  BIT_OR,
+  /// ^
+  BIT_XOR,
+  /// &
+  BIT_AND,
+  /// <<
+  SHL,
+  /// >>
+  SAR,
+  /// >>>
+  SHR,
+  /// *
+  MUL,
+  /// /
+  DIV,
+  /// %
+  MOD,
+  /// **
+  EXP,
 
   // Unop
-  ADD, // +
-  SUB, // -
+  /// +
+  ADD,
+  /// -
+  SUB,
 
-  NOT,     // !
-  BIT_NOT, // ~
-  DELETE,  // delete
-  TYPEOF,  // typeof
-  VOID,    // void
+  /// !
+  NOT,
+  /// ~
+  BIT_NOT,
+  /// delete
+  DELETE,
+  /// typeof
+  TYPEOF,
+  /// void
+  VOID,
 
   // BEGIN IsCountOp
-  INC, // ++
-  DEC, // --
+  /// ++
+  INC,
+  /// --
+  DEC,
   // END IsCountOp
   // END IsUnaryOrCountOp
-  EQ,         // ==
-  EQ_STRICT,  // ===
-  NE,         // !=
-  NE_STRICT,  // !==
-  LT,         // <
-  GT,         // >
-  LTE,        // <=
-  GTE,        // >=
-  INSTANCEOF, // instanceof
-  IN,         // in
+  /// ==
+  EQ,
+  /// ===
+  EQ_STRICT,
+  /// !=
+  NE,
+  /// !==
+  NE_STRICT,
+  /// <
+  LT,
+  /// >
+  GT,
+  /// <=
+  LTE,
+  /// >=
+  GTE,
+  /// instanceof
+  INSTANCEOF,
+  /// in
+  IN,
 
-  BREAK,    // break
-  CASE,     // case
-  CATCH,    // catch
-  CONTINUE, // continue
-  DEBUGGER, // debugger
-  DEFAULT,  // default
-  // DELETE
-  DO,       // do
-  ELSE,     // else
-  FINALLY,  // finally
-  FOR,      // for
-  FUNCTION, // function
-  IF,       // if
-  // IN
-  // INSTANCEOF
-  NEW,    // new
-  RETURN, // return
-  SWITCH, // switch
-  THROW,  // throw
-  TRY,    // try
-  // TYPEOF
-  VAR, // var
-  // VOID
-  WHILE, // while
-  WITH,  // with
-  THIS,  // this
+  /// break
+  BREAK,
+  /// case
+  CASE,
+  /// catch
+  CATCH,
+  /// continue
+  CONTINUE,
+  /// debugger
+  DEBUGGER,
+  /// default
+  DEFAULT,
+  /// do
+  DO,
+  /// else
+  ELSE,
+  /// finally
+  FINALLY,
+  /// for
+  FOR,
+  /// function
+  FUNCTION,
+  /// if
+  IF,
+  /// new
+  NEW,
+  /// return
+  RETURN,
+  /// switch
+  SWITCH,
+  /// throw
+  THROW,
+  /// try
+  TRY,
+  /// var
+  VAR,
+  /// while
+  WHILE,
+  /// with
+  WITH,
+  /// this
+  THIS,
 
-  NULL,  // null
-  TRUE,  // true
-  FALSE, // false
-  NUMBER,
+  /// null
+  NULL,
+  /// true
+  TRUE,
+  /// false
+  FALSE,
+  /// number
+  NUMBER(f64),
+  /// string
   STRING(String),
-  BIGINT,
+  /// bigint
+  BIGINT(BigInt),
 
   // BEGIN Callable
-  SUPER, // super
+  /// super
+  SUPER,
   // BEGIN AnyIdentifier
-  IDENTIFIER,
-  AWAIT, // await
-  YIELD, // yield
+  /// identifier
+  IDENTIFIER(String),
+  /// await
+  AWAIT,
+  /// yield
+  YIELD,
   // END AnyIdentifier
   // END Callable
-  CLASS,   // class
-  CONST,   // const
-  EXPORT,  // export
-  EXTENDS, // extends
-  IMPORT,  // import
-  PRIVATE_IDENTIFIER,
+  /// class
+  CLASS,
+  /// const
+  CONST,
+  /// export
+  EXPORT,
+  /// extends
+  EXTENDS,
+  /// import
+  IMPORT,
+  /// private_identifier
+  PRIVATE_IDENTIFIER(String),
 
-  ENUM, // enum
+  /// enum
+  ENUM,
 
   ESCAPED_KEYWORD(String),
 }
@@ -159,10 +258,10 @@ impl TokenType {
     match c {
       '(' => TokenType::LPAREN,
       ')' => TokenType::RPAREN,
-      '{' => TokenType::RBRACE,
-      '}' => TokenType::LBRACE,
-      '[' => TokenType::RBRACK,
-      ']' => TokenType::LBRACK,
+      '{' => TokenType::LBRACE,
+      '}' => TokenType::RBRACE,
+      '[' => TokenType::LBRACK,
+      ']' => TokenType::RBRACK,
       ':' => TokenType::COLON,
       ';' => TokenType::SEMICOLON,
       ',' => TokenType::COMMA,
@@ -173,11 +272,8 @@ impl TokenType {
   }
 }
 
-pub struct TokenValue {}
-
 pub struct Token {
-  pub r#type: TokenType,
-  pub value: TokenValue,
+  pub token_type: TokenType,
   pub start_index: usize,
   pub end_index: usize,
   pub line: usize,
@@ -188,84 +284,91 @@ pub struct Token {
 
 impl Token {
   pub fn is_automatic_semicolon(&self) -> bool {
-    match self.r#type {
-      TokenType::SEMICOLON | TokenType::RBRACE | TokenType::EOS => true,
-      _ => false,
-    }
+    matches!(
+      self.token_type,
+      TokenType::SEMICOLON | TokenType::RBRACE | TokenType::EOS
+    )
   }
 
   pub fn is_member(&self) -> bool {
-    match self.r#type {
-      TokenType::TEMPLATE | TokenType::PERIOD | TokenType::LBRACK => true,
-      _ => false,
-    }
+    matches!(
+      self.token_type,
+      TokenType::TEMPLATE | TokenType::PERIOD | TokenType::LBRACK
+    )
   }
 
   pub fn is_property_call(&self) -> bool {
-    match self.r#type {
+    matches!(
+      self.token_type,
       TokenType::TEMPLATE
-      | TokenType::PERIOD
-      | TokenType::LBRACK
-      | TokenType::OPTIONAL
-      | TokenType::LPAREN => true,
-      _ => false,
-    }
+        | TokenType::PERIOD
+        | TokenType::LBRACK
+        | TokenType::OPTIONAL
+        | TokenType::LPAREN
+    )
   }
 
   pub fn is_keyword(&self) -> bool {
-    match self.r#type {
+    matches!(
+      self.token_type,
       TokenType::AWAIT
-      | TokenType::BREAK
-      | TokenType::CASE
-      | TokenType::CATCH
-      | TokenType::CLASS
-      | TokenType::CONST
-      | TokenType::CONTINUE
-      | TokenType::DEBUGGER
-      | TokenType::DEFAULT
-      | TokenType::DELETE
-      | TokenType::DO
-      | TokenType::ELSE
-      | TokenType::ENUM
-      | TokenType::EXPORT
-      | TokenType::EXTENDS
-      | TokenType::FALSE
-      | TokenType::FINALLY
-      | TokenType::FOR
-      | TokenType::FUNCTION
-      | TokenType::IF
-      | TokenType::IMPORT
-      | TokenType::IN
-      | TokenType::INSTANCEOF
-      | TokenType::NEW
-      | TokenType::NULL
-      | TokenType::RETURN
-      | TokenType::SUPER
-      | TokenType::SWITCH
-      | TokenType::THIS
-      | TokenType::THROW
-      | TokenType::TRUE
-      | TokenType::TRY
-      | TokenType::TYPEOF
-      | TokenType::VAR
-      | TokenType::VOID
-      | TokenType::WHILE
-      | TokenType::WITH
-      | TokenType::YIELD => true,
-      _ => false,
-    }
+        | TokenType::BREAK
+        | TokenType::CASE
+        | TokenType::CATCH
+        | TokenType::CLASS
+        | TokenType::CONST
+        | TokenType::CONTINUE
+        | TokenType::DEBUGGER
+        | TokenType::DEFAULT
+        | TokenType::DELETE
+        | TokenType::DO
+        | TokenType::ELSE
+        | TokenType::ENUM
+        | TokenType::EXPORT
+        | TokenType::EXTENDS
+        | TokenType::FALSE
+        | TokenType::FINALLY
+        | TokenType::FOR
+        | TokenType::FUNCTION
+        | TokenType::IF
+        | TokenType::IMPORT
+        | TokenType::IN
+        | TokenType::INSTANCEOF
+        | TokenType::NEW
+        | TokenType::NULL
+        | TokenType::RETURN
+        | TokenType::SUPER
+        | TokenType::SWITCH
+        | TokenType::THIS
+        | TokenType::THROW
+        | TokenType::TRUE
+        | TokenType::TRY
+        | TokenType::TYPEOF
+        | TokenType::VAR
+        | TokenType::VOID
+        | TokenType::WHILE
+        | TokenType::WITH
+        | TokenType::YIELD
+    )
   }
 }
 
 pub fn is_reserved_word_strict(s: &str) -> bool {
-  match s {
-    "implements" | "interface" | "let" | "package" | "private"
-    | "protected" | "public" | "static" | "yield" => true,
-    _ => false,
-  }
+  matches!(
+    s,
+    "implements"
+      | "interface"
+      | "let"
+      | "package"
+      | "private"
+      | "protected"
+      | "public"
+      | "static"
+      | "yield"
+  )
 }
 
-pub fn lookup_keyword(s: &str, has_escaped: bool) -> Option<TokenType> {
+fn lookup_unescaped_keyword(s: &str) -> Option<TokenType> {
   match s {
     "await" => Some(TokenType::AWAIT),
     "break" => Some(TokenType::BREAK),
@@ -305,7 +408,17 @@ pub fn lookup_keyword(s: &str, has_escaped: bool) -> Option<TokenType> {
     "while" => Some(TokenType::WHILE),
     "with" => Some(TokenType::WITH),
     "yield" => Some(TokenType::YIELD),
-    _ if has_escaped => Some(TokenType::ESCAPED_KEYWORD(s.to_owned())),
     _ => None,
   }
+}
+
+pub fn lookup_keyword(s: &str, had_escaped: bool) -> Option<TokenType> {
+  dbg!(s);
+  lookup_unescaped_keyword(s).map(|t| {
+    if had_escaped {
+      TokenType::ESCAPED_KEYWORD(s.to_owned())
+    } else {
+      t
+    }
+  })
 }

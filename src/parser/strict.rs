@@ -1,6 +1,10 @@
 pub struct Strict(bool);
 
 impl Strict {
+  pub fn new(b: bool) -> Self {
+    Self(b)
+  }
+
   pub fn mode_on(&mut self) {
     self.0 = true;
   }
