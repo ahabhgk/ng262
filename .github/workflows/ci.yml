@@ -1,0 +1,107 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt
+          profile: minimal
+          override: true
+      - name: Run rustfmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+          profile: minimal
+          override: true
+      - name: Run clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all --all-targets -- -D warnings -A dead_code
+
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install rust
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - name: Audit check
+        uses: actions-rs/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    name: Rust test - ${{ matrix.os }} ${{ matrix.profile }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            profile: debug
+          - os: ubuntu-latest
+            profile: release
+          - os: macos-latest
+            profile: debug
+          - os: macos-latest
+            profile: release
+          - os: windows-latest
+            profile: debug
+          - os: windows-latest
+            profile: release
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      - name: Debug test
+        uses: actions-rs/cargo@v1
+        if: matrix.profile == 'debug'
+        with:
+          command: test
+          args: --all --locked
+        env:
+          RUST_BACKTRACE: 1
+      - name: Release test
+        uses: actions-rs/cargo@v1
+        if: matrix.profile == 'release'
+        with:
+          command: test
+          args: --all --release --locked
