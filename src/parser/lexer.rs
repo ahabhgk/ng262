@@ -156,6 +156,7 @@ impl Lexer<'_, '_> {
       .expect("current() should not call before forward()")
   }
 
+  #[allow(clippy::should_implement_trait)]
   pub fn next(&mut self) -> Result<Token, SyntaxError> {
     self.forward()?;
     Ok(self.current())
@@ -194,15 +195,10 @@ impl Lexer<'_, '_> {
 
   pub fn matches_identifier(&self, id: &str, peek: Token) -> bool {
     if matches!(peek.token_type, TokenType::IDENTIFIER(s) if s == id) {
-      if self
+      !self
         .source
         .slice(peek.start_index, peek.end_index)
         .contains('\\')
-      {
-        false
-      } else {
-        true
-      }
     } else {
       false
     }
