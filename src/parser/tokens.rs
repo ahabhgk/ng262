@@ -414,7 +414,6 @@ fn lookup_unescaped_keyword(s: &str) -> Option<TokenType> {
 }
 
 pub fn lookup_keyword(s: &str, had_escaped: bool) -> Option<TokenType> {
-  dbg!(s);
   lookup_unescaped_keyword(s).map(|t| {
     if had_escaped {
       TokenType::ESCAPED_KEYWORD(s.to_owned())
