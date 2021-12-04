@@ -139,13 +139,9 @@ pub struct Lexer<'i, 's> {
 
 impl Lexer<'_, '_> {
   pub fn forward(&mut self) -> Result<(), SyntaxError> {
-    // if self.current_token.is_none() {
-    //   self.current_token = Some(self.advance()?);
-    // } else {
     self.current_token = Some(self.peek()?);
-    // }
     self.peek_token = Some(self.peek_ahead()?);
-    self.peek_ahead_token = Some(self.advance()?);
+    self.peek_ahead_token = None;
     Ok(())
   }
 
