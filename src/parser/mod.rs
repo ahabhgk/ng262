@@ -22,3 +22,9 @@ pub struct Parser {
 }
 
 impl Parser {}
+
+pub struct Location {
+  index: usize,
+  line: usize,
+  column: usize,
+}
