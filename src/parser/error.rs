@@ -1,6 +1,6 @@
 use std::{error::Error, fmt};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SyntaxError {
   pub message: String,
   pub decoration: String,

@@ -1,7 +1,7 @@
 use num_bigint::BigInt;
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
   // BEGIN PropertyOrCall
   // BEGIN Member
@@ -272,6 +272,7 @@ impl TokenType {
   }
 }
 
+#[derive(Debug, Clone)]
 pub struct Token {
   pub token_type: TokenType,
   pub start_index: usize,
@@ -413,7 +414,6 @@ fn lookup_unescaped_keyword(s: &str) -> Option<TokenType> {
 }
 
 pub fn lookup_keyword(s: &str, had_escaped: bool) -> Option<TokenType> {
-  dbg!(s);
   lookup_unescaped_keyword(s).map(|t| {
     if had_escaped {
       TokenType::ESCAPED_KEYWORD(s.to_owned())

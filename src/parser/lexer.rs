@@ -76,7 +76,7 @@ impl<'a> Input<'a> {
   pub fn new(source: &'a str) -> Self {
     Self {
       iter: source.chars(),
-      index: 0,
+      index: 0, // TODO: read_index starts with -1?
     }
   }
 
@@ -127,6 +127,9 @@ impl<'a> Input<'a> {
 
 pub struct Lexer<'i, 's> {
   source: Input<'i>,
+  current_token: Option<Token>,
+  peek_token: Option<Token>,
+  peek_ahead_token: Option<Token>,
   line: usize,
   column_offset: usize,
   line_terminator_before_next_token: bool,
@@ -134,16 +137,147 @@ pub struct Lexer<'i, 's> {
   strict: &'s mut Strict,
 }
 
+impl Lexer<'_, '_> {
+  pub fn forward(&mut self) -> Result<(), SyntaxError> {
+    self.current_token = Some(self.peek()?);
+    self.peek_token = Some(self.peek_ahead()?);
+    self.peek_ahead_token = None;
+    Ok(())
+  }
+
+  pub fn current(&self) -> Token {
+    self
+      .current_token
+      .clone()
+      .expect("current() should not call before forward()")
+  }
+
+  #[allow(clippy::should_implement_trait)]
+  pub fn next(&mut self) -> Result<Token, SyntaxError> {
+    self.forward()?;
+    Ok(self.current())
+  }
+
+  pub fn peek(&mut self) -> Result<Token, SyntaxError> {
+    if self.peek_token.is_none() {
+      self.peek_token = Some(self.advance()?);
+    }
+    Ok(self.peek_token.clone().unwrap())
+  }
+
+  pub fn peek_ahead(&mut self) -> Result<Token, SyntaxError> {
+    if self.peek_token.is_none() {
+      self.peek_token = Some(self.advance()?);
+    }
+    if self.peek_ahead_token.is_none() {
+      self.peek_ahead_token = Some(self.advance()?);
+    }
+    Ok(self.peek_ahead_token.clone().unwrap())
+  }
+
+  pub fn matches(&self, token_type: TokenType, peek: Token) -> bool {
+    peek.token_type == token_type
+  }
+
+  pub fn matches_identifier(&self, id: &str, peek: Token) -> bool {
+    if matches!(peek.token_type, TokenType::IDENTIFIER(s) if s == id) {
+      !self
+        .source
+        .slice(peek.start_index, peek.end_index)
+        .contains('\\')
+    } else {
+      false
+    }
+  }
+
+  pub fn test(&mut self, token_type: TokenType) -> Result<bool, SyntaxError> {
+    let peek = self.peek()?;
+    Ok(self.matches(token_type, peek))
+  }
+
+  pub fn test_identifier(&mut self, id: &str) -> Result<bool, SyntaxError> {
+    let peek = self.peek()?;
+    Ok(self.matches_identifier(id, peek))
+  }
+
+  pub fn test_ahead(
+    &mut self,
+    token_type: TokenType,
+  ) -> Result<bool, SyntaxError> {
+    let peek = self.peek_ahead()?;
+    Ok(self.matches(token_type, peek))
+  }
+
+  pub fn test_ahead_identifier(
+    &mut self,
+    id: &str,
+  ) -> Result<bool, SyntaxError> {
+    let peek = self.peek_ahead()?;
+    Ok(self.matches_identifier(id, peek))
+  }
+
+  pub fn eat(&mut self, token_type: TokenType) -> Result<bool, SyntaxError> {
+    if self.test(token_type)? {
+      self.forward()?;
+      Ok(true)
+    } else {
+      Ok(false)
+    }
+  }
+
+  pub fn eat_identifier(&mut self, id: &str) -> Result<bool, SyntaxError> {
+    if self.test_identifier(id)? {
+      self.forward()?;
+      Ok(true)
+    } else {
+      Ok(false)
+    }
+  }
+
+  pub fn expect(&mut self, token_type: TokenType) -> Result<(), SyntaxError> {
+    if self.test(token_type)? {
+      self.forward()?;
+      Ok(())
+    } else {
+      Err(self.create_syntax_error(
+        self.source.position(),
+        SyntaxErrorTemplate::UnexpectedToken,
+      ))
+    }
+  }
+
+  pub fn expect_identifier(&mut self, id: &str) -> Result<(), SyntaxError> {
+    if self.test_identifier(id)? {
+      self.forward()?;
+      Ok(())
+    } else {
+      Err(self.create_syntax_error(
+        self.source.position(),
+        SyntaxErrorTemplate::UnexpectedToken,
+      ))
+    }
+  }
+}
+
 impl<'i, 's> Lexer<'i, 's> {
   pub fn new(source: &'i str, strict: &'s mut Strict) -> Self {
     Self {
       source: Input::new(source),
+      current_token: None,
+      peek_token: None,
+      peek_ahead_token: None,
       line: 1,
       column_offset: 0,
       line_terminator_before_next_token: false,
       had_escaped: false,
       strict,
     }
+  }
+
+  fn advance(&mut self) -> Result<Token, SyntaxError> {
+    self.line_terminator_before_next_token = false;
+    self.had_escaped = false;
+    self.next_token()
   }
 
   fn create_token(
@@ -738,6 +872,15 @@ impl<'i, 's> Lexer<'i, 's> {
     }
   }
 
+  fn skip_hashbang_comment(&mut self) {
+    if self.source.position() == 0
+      && matches!(self.source.current(), Some('#'))
+      && matches!(self.source.peek(), Some('!'))
+    {
+      self.skip_line_comment();
+    }
+  }
+
   /// Skip comments or whitespaces.
   ///
   /// See https://tc39.es/ecma262/#sec-white-space, https://tc39.es/ecma262/#sec-comments
@@ -891,7 +1034,7 @@ mod tests {
   macro_rules! assert_token_type {
     ($l: ident, $t: expr) => {{
       let token_type = $t;
-      let expected = $l.next_token().unwrap().token_type;
+      let expected = $l.advance().unwrap().token_type;
       assert_eq!(expected, token_type);
     }};
     ($l: ident, $($t: expr),* $(,)?) => {{
@@ -932,6 +1075,18 @@ block comment
       TokenType::IDENTIFIER("toString".to_owned()),
       TokenType::LPAREN,
       TokenType::RPAREN,
+      TokenType::EOS,
+    );
+  }
+
+  #[test]
+  fn identifier_async() {
+    let source = r#"async"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_token_type!(
+      lexer,
+      TokenType::IDENTIFIER("async".to_owned()),
       TokenType::EOS,
     );
   }
@@ -1114,5 +1269,133 @@ block comment
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(lexer, TokenType::NUMBER(123_456_789.0), TokenType::EOS);
+  }
+
+  #[test]
+  fn lexer_forward() {
+    let source = r#"let ng = 262;"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    lexer.forward().unwrap();
+    assert_eq!(
+      lexer.current().token_type,
+      TokenType::IDENTIFIER("let".to_owned())
+    );
+    lexer.forward().unwrap();
+    assert_eq!(
+      lexer.current().token_type,
+      TokenType::IDENTIFIER("ng".to_owned())
+    );
+    lexer.forward().unwrap();
+    assert_eq!(lexer.current().token_type, TokenType::ASSIGN);
+    lexer.forward().unwrap();
+    assert_eq!(lexer.current().token_type, TokenType::NUMBER(262.0));
+    lexer.forward().unwrap();
+    assert_eq!(lexer.current().token_type, TokenType::SEMICOLON);
+    lexer.forward().unwrap();
+    assert_eq!(lexer.current().token_type, TokenType::EOS);
+  }
+
+  #[test]
+  fn lexer_peek_at_start() {
+    let source = r#"let ng = 262;"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_eq!(
+      lexer.peek().unwrap().token_type,
+      TokenType::IDENTIFIER("let".to_owned())
+    );
+    assert_eq!(
+      lexer.peek_ahead().unwrap().token_type,
+      TokenType::IDENTIFIER("ng".to_owned())
+    );
+  }
+
+  #[test]
+  fn lexer_peek_at_end() {
+    let source = r#";"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert_eq!(lexer.next().unwrap().token_type, TokenType::SEMICOLON);
+    assert_eq!(lexer.peek().unwrap().token_type, TokenType::EOS);
+    assert_eq!(lexer.peek_ahead().unwrap().token_type, TokenType::EOS);
+  }
+
+  #[test]
+  fn lexer_matches() {
+    let source = r#";"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    let peek = lexer.peek().unwrap();
+    assert!(lexer.matches(TokenType::SEMICOLON, peek));
+  }
+
+  #[test]
+  fn lexer_matches_identifier() {
+    let source = r#"let"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    let peek = lexer.peek().unwrap();
+    assert!(lexer.matches_identifier("let", peek));
+  }
+
+  #[test]
+  fn lexer_test() {
+    let source = r#";;"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert!(lexer.test(TokenType::SEMICOLON).unwrap());
+    assert!(lexer.test_ahead(TokenType::SEMICOLON).unwrap());
+  }
+
+  #[test]
+  fn lexer_test_identifier() {
+    let source = r#"async async"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert!(lexer.test_identifier("async").unwrap());
+    assert!(lexer.test_ahead_identifier("async").unwrap());
+  }
+
+  #[test]
+  fn lexer_eat() {
+    let source = r#";"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert!(lexer.eat(TokenType::SEMICOLON).unwrap());
+    assert!(lexer.matches(TokenType::SEMICOLON, lexer.current()));
+    assert!(lexer.eat(TokenType::EOS).unwrap());
+  }
+
+  #[test]
+  fn lexer_eat_identifier() {
+    let source = r#"async"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert!(lexer.eat_identifier("async").unwrap());
+    assert!(
+      lexer.matches(TokenType::IDENTIFIER("async".to_owned()), lexer.current())
+    );
+    assert!(lexer.test(TokenType::EOS).unwrap());
+  }
+
+  #[test]
+  fn lexer_expect() {
+    let source = r#";"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert!(lexer.expect(TokenType::SEMICOLON).is_ok());
+    assert!(lexer.expect(TokenType::SEMICOLON).is_err());
+    assert!(lexer.expect(TokenType::EOS).is_ok());
+  }
+
+  #[test]
+  fn lexer_expect_identifier() {
+    let source = r#"async"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    assert!(lexer.expect_identifier("async").is_ok());
+    assert!(lexer.expect_identifier("async").is_err());
+    assert!(lexer.expect(TokenType::EOS).is_ok());
   }
 }
