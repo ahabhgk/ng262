@@ -213,9 +213,10 @@ impl Lexer<'_, '_> {
       self.forward()?;
       Ok(())
     } else {
-      Err(SyntaxError::from_index(
+      let peek = &self.peek()?;
+      Err(SyntaxError::from_token(
         self,
-        0,
+        peek,
         SyntaxErrorTemplate::UnexpectedToken,
       ))
     }
