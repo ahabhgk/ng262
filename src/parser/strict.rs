@@ -1,5 +1,3 @@
-use super::lexer::Lexer;
-
 pub trait UseStrict {
   fn is_strict(&self) -> bool;
 

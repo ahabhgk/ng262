@@ -23,8 +23,8 @@ use super::{lexer::is_line_terminator, tokens::Token};
 /// ```
 #[derive(Debug, Clone)]
 pub struct SyntaxError {
-  pub message: String,
-  pub decoration: String,
+  message: String,
+  decoration: String,
 }
 
 impl Error for SyntaxError {}
@@ -36,6 +36,7 @@ impl fmt::Display for SyntaxError {
 }
 
 impl SyntaxError {
+  #[allow(clippy::too_many_arguments)]
   fn new<S: SyntaxErrorInfo>(
     informer: &S,
     template: SyntaxErrorTemplate,

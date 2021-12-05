@@ -12,7 +12,7 @@ impl Parser<'_, '_> {
     let peek = self.lexer.peek()?;
     if matches!(
       peek.token_type,
-      TokenType::IDENTIFIER(_) | TokenType::ESCAPED_KEYWORD(_)
+      TokenType::Identifier(_) | TokenType::EscapedKeyword(_)
     ) || peek.token_type.is_keyword()
     {
       let name = self.lexer.next()?.token_type.identifier_or_keyword_value();

@@ -1,272 +1,271 @@
 use num_bigint::BigInt;
 
-#[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
   // BEGIN PropertyOrCall
   // BEGIN Member
   // BEGIN Template
   /// `
-  TEMPLATE,
+  Template,
   // END Template
 
   // BEGIN Property
   /// .
-  PERIOD,
+  Period,
   /// [
-  LBRACK,
+  LBrack,
   // END Property
   // END Member
   /// ?.
-  OPTIONAL,
+  Optional,
   /// (
-  LPAREN,
+  LParen,
   // END PropertyOrCall
   /// )
-  RPAREN,
+  RParen,
   /// ]
-  RBRACK,
+  RBrack,
   /// {
-  LBRACE,
+  LBrace,
   /// :
-  COLON,
+  Colon,
   /// ...
-  ELLIPSIS,
+  Ellipsis,
   /// ?
-  CONDITIONAL,
+  Conditional,
   // BEGIN AutoSemicolon
   /// ;
-  SEMICOLON,
+  Semicolon,
   /// }
-  RBRACE,
+  RBrace,
 
-  EOS,
+  EndOfSource,
   // END AutoSemicolon
 
   // BEGIN ArrowOrAssign
   /// =>
-  ARROW,
+  Arrow,
   // BEGIN Assign
   /// =
-  ASSIGN,
+  Assign,
   // Logical
   /// ??=
-  ASSIGN_NULLISH,
+  AssignNullish,
   /// ||=
-  ASSIGN_OR,
+  AssignOr,
   /// &&=
-  ASSIGN_AND,
+  AssignAnd,
 
   // Binop
   /// |=
-  ASSIGN_BIT_OR,
+  AssignBitOr,
   /// ^=
-  ASSIGN_BIT_XOR,
+  AssignBitXor,
   /// &=
-  ASSIGN_BIT_AND,
+  AssignBitAnd,
   /// <<=
-  ASSIGN_SHL,
+  AssignShl,
   /// >>=
-  ASSIGN_SAR,
+  AssignSar,
   /// >>>=
-  ASSIGN_SHR,
+  AssignShr,
   /// *=
-  ASSIGN_MUL,
+  AssignMul,
   /// /=
-  ASSIGN_DIV,
+  AssignDiv,
   /// %=
-  ASSIGN_MOD,
+  AssignMod,
   /// **=
-  ASSIGN_EXP,
+  AssignExp,
 
   // Unop
   /// +=
-  ASSIGN_ADD,
+  AssignAdd,
   /// -=
-  ASSIGN_SUB,
+  AssignSub,
   // END Assign
   // END ArrowOrAssign
 
   // Binary operators by precidence
   /// ,
-  COMMA,
+  Comma,
 
   // Logical
   /// ??
-  NULLISH,
+  Nullish,
   /// ||
-  OR,
+  Or,
   /// &&
-  AND,
+  And,
 
   // Binop
   /// |
-  BIT_OR,
+  BitOr,
   /// ^
-  BIT_XOR,
+  BitXor,
   /// &
-  BIT_AND,
+  BitAnd,
   /// <<
-  SHL,
+  Shl,
   /// >>
-  SAR,
+  Sar,
   /// >>>
-  SHR,
+  Shr,
   /// *
-  MUL,
+  Mul,
   /// /
-  DIV,
+  Div,
   /// %
-  MOD,
+  Mod,
   /// **
-  EXP,
+  Exp,
 
   // Unop
   /// +
-  ADD,
+  Add,
   /// -
-  SUB,
+  Sub,
 
   /// !
-  NOT,
+  Not,
   /// ~
-  BIT_NOT,
+  BitNot,
   /// delete
-  DELETE,
+  Delete,
   /// typeof
-  TYPEOF,
+  Typeof,
   /// void
-  VOID,
+  Void,
 
   // BEGIN IsCountOp
   /// ++
-  INC,
+  Inc,
   /// --
-  DEC,
+  Dec,
   // END IsCountOp
   // END IsUnaryOrCountOp
   /// ==
-  EQ,
+  Equal,
   /// ===
-  EQ_STRICT,
+  StrictEqual,
   /// !=
-  NE,
+  NotEqual,
   /// !==
-  NE_STRICT,
+  StrictNotEqual,
   /// <
-  LT,
+  LessThan,
   /// >
-  GT,
+  GreaterThan,
   /// <=
-  LTE,
+  LessThanEqual,
   /// >=
-  GTE,
+  GreaterThanEqual,
   /// instanceof
-  INSTANCEOF,
+  Instanceof,
   /// in
-  IN,
+  In,
 
   /// break
-  BREAK,
+  Break,
   /// case
-  CASE,
+  Case,
   /// catch
-  CATCH,
+  Catch,
   /// continue
-  CONTINUE,
+  Continue,
   /// debugger
-  DEBUGGER,
+  Debugger,
   /// default
-  DEFAULT,
+  Default,
   /// do
-  DO,
+  Do,
   /// else
-  ELSE,
+  Else,
   /// finally
-  FINALLY,
+  Finally,
   /// for
-  FOR,
+  For,
   /// function
-  FUNCTION,
+  Function,
   /// if
-  IF,
+  If,
   /// new
-  NEW,
+  New,
   /// return
-  RETURN,
+  Return,
   /// switch
-  SWITCH,
+  Switch,
   /// throw
-  THROW,
+  Throw,
   /// try
-  TRY,
+  Try,
   /// var
-  VAR,
+  Var,
   /// while
-  WHILE,
+  While,
   /// with
-  WITH,
+  With,
   /// this
-  THIS,
+  This,
 
   /// null
-  NULL,
+  Null,
   /// true
-  TRUE,
+  True,
   /// false
-  FALSE,
+  False,
   /// number
-  NUMBER(f64),
+  Number(f64),
   /// string
-  STRING(String),
+  String(String),
   /// bigint
-  BIGINT(BigInt),
+  BigInt(BigInt),
 
   // BEGIN Callable
   /// super
-  SUPER,
+  Super,
   // BEGIN AnyIdentifier
   /// identifier
-  IDENTIFIER(String),
+  Identifier(String),
   /// await
-  AWAIT,
+  Await,
   /// yield
-  YIELD,
+  Yield,
   // END AnyIdentifier
   // END Callable
   /// class
-  CLASS,
+  Class,
   /// const
-  CONST,
+  Const,
   /// export
-  EXPORT,
+  Export,
   /// extends
-  EXTENDS,
+  Extends,
   /// import
-  IMPORT,
+  Import,
   /// private_identifier
-  PRIVATE_IDENTIFIER(String),
+  PrivateIdentifier(String),
 
   /// enum
-  ENUM,
+  Enum,
 
-  ESCAPED_KEYWORD(String),
+  EscapedKeyword(String),
 }
 
 impl TokenType {
   pub fn from_single(c: char) -> Self {
     match c {
-      '(' => TokenType::LPAREN,
-      ')' => TokenType::RPAREN,
-      '{' => TokenType::LBRACE,
-      '}' => TokenType::RBRACE,
-      '[' => TokenType::LBRACK,
-      ']' => TokenType::RBRACK,
-      ':' => TokenType::COLON,
-      ';' => TokenType::SEMICOLON,
-      ',' => TokenType::COMMA,
-      '~' => TokenType::BIT_NOT,
-      '`' => TokenType::TEMPLATE,
+      '(' => TokenType::LParen,
+      ')' => TokenType::RParen,
+      '{' => TokenType::LBrace,
+      '}' => TokenType::RBrace,
+      '[' => TokenType::LBrack,
+      ']' => TokenType::RBrack,
+      ':' => TokenType::Colon,
+      ';' => TokenType::Semicolon,
+      ',' => TokenType::Comma,
+      '~' => TokenType::BitNot,
+      '`' => TokenType::Template,
       _ => unreachable!("unexpected char"),
     }
   }
@@ -274,113 +273,113 @@ impl TokenType {
   pub fn is_automatic_semicolon(&self) -> bool {
     matches!(
       self,
-      TokenType::SEMICOLON | TokenType::RBRACE | TokenType::EOS
+      TokenType::Semicolon | TokenType::RBrace | TokenType::EndOfSource
     )
   }
 
   pub fn is_member(&self) -> bool {
     matches!(
       self,
-      TokenType::TEMPLATE | TokenType::PERIOD | TokenType::LBRACK
+      TokenType::Template | TokenType::Period | TokenType::LBrack
     )
   }
 
   pub fn is_property_call(&self) -> bool {
     matches!(
       self,
-      TokenType::TEMPLATE
-        | TokenType::PERIOD
-        | TokenType::LBRACK
-        | TokenType::OPTIONAL
-        | TokenType::LPAREN
+      TokenType::Template
+        | TokenType::Period
+        | TokenType::LBrack
+        | TokenType::Optional
+        | TokenType::LParen
     )
   }
 
   pub fn is_keyword(&self) -> bool {
     matches!(
       self,
-      TokenType::AWAIT
-        | TokenType::BREAK
-        | TokenType::CASE
-        | TokenType::CATCH
-        | TokenType::CLASS
-        | TokenType::CONST
-        | TokenType::CONTINUE
-        | TokenType::DEBUGGER
-        | TokenType::DEFAULT
-        | TokenType::DELETE
-        | TokenType::DO
-        | TokenType::ELSE
-        | TokenType::ENUM
-        | TokenType::EXPORT
-        | TokenType::EXTENDS
-        | TokenType::FALSE
-        | TokenType::FINALLY
-        | TokenType::FOR
-        | TokenType::FUNCTION
-        | TokenType::IF
-        | TokenType::IMPORT
-        | TokenType::IN
-        | TokenType::INSTANCEOF
-        | TokenType::NEW
-        | TokenType::NULL
-        | TokenType::RETURN
-        | TokenType::SUPER
-        | TokenType::SWITCH
-        | TokenType::THIS
-        | TokenType::THROW
-        | TokenType::TRUE
-        | TokenType::TRY
-        | TokenType::TYPEOF
-        | TokenType::VAR
-        | TokenType::VOID
-        | TokenType::WHILE
-        | TokenType::WITH
-        | TokenType::YIELD
+      TokenType::Await
+        | TokenType::Break
+        | TokenType::Case
+        | TokenType::Catch
+        | TokenType::Class
+        | TokenType::Const
+        | TokenType::Continue
+        | TokenType::Debugger
+        | TokenType::Default
+        | TokenType::Delete
+        | TokenType::Do
+        | TokenType::Else
+        | TokenType::Enum
+        | TokenType::Export
+        | TokenType::Extends
+        | TokenType::False
+        | TokenType::Finally
+        | TokenType::For
+        | TokenType::Function
+        | TokenType::If
+        | TokenType::Import
+        | TokenType::In
+        | TokenType::Instanceof
+        | TokenType::New
+        | TokenType::Null
+        | TokenType::Return
+        | TokenType::Super
+        | TokenType::Switch
+        | TokenType::This
+        | TokenType::Throw
+        | TokenType::True
+        | TokenType::Try
+        | TokenType::Typeof
+        | TokenType::Var
+        | TokenType::Void
+        | TokenType::While
+        | TokenType::With
+        | TokenType::Yield
     )
   }
 
   pub fn identifier_or_keyword_value(&self) -> String {
     let s = match self {
-      TokenType::AWAIT => "await",
-      TokenType::BREAK => "break",
-      TokenType::CASE => "case",
-      TokenType::CATCH => "catch",
-      TokenType::CLASS => "class",
-      TokenType::CONST => "const",
-      TokenType::CONTINUE => "continue",
-      TokenType::DEBUGGER => "debugger",
-      TokenType::DEFAULT => "default",
-      TokenType::DELETE => "delete",
-      TokenType::DO => "do",
-      TokenType::ELSE => "else",
-      TokenType::ENUM => "enum",
-      TokenType::EXPORT => "export",
-      TokenType::EXTENDS => "extends",
-      TokenType::FALSE => "false",
-      TokenType::FINALLY => "finally",
-      TokenType::FOR => "for",
-      TokenType::FUNCTION => "function",
-      TokenType::IF => "if",
-      TokenType::IMPORT => "import",
-      TokenType::IN => "in",
-      TokenType::INSTANCEOF => "instanceof",
-      TokenType::NEW => "new",
-      TokenType::NULL => "null",
-      TokenType::RETURN => "return",
-      TokenType::SUPER => "super",
-      TokenType::SWITCH => "switch",
-      TokenType::THIS => "this",
-      TokenType::THROW => "throw",
-      TokenType::TRUE => "true",
-      TokenType::TRY => "try",
-      TokenType::TYPEOF => "typeof",
-      TokenType::VAR => "var",
-      TokenType::VOID => "void",
-      TokenType::WHILE => "while",
-      TokenType::WITH => "with",
-      TokenType::YIELD => "yield",
-      TokenType::IDENTIFIER(s) | TokenType::ESCAPED_KEYWORD(s) => s,
+      TokenType::Await => "await",
+      TokenType::Break => "break",
+      TokenType::Case => "case",
+      TokenType::Catch => "catch",
+      TokenType::Class => "class",
+      TokenType::Const => "const",
+      TokenType::Continue => "continue",
+      TokenType::Debugger => "debugger",
+      TokenType::Default => "default",
+      TokenType::Delete => "delete",
+      TokenType::Do => "do",
+      TokenType::Else => "else",
+      TokenType::Enum => "enum",
+      TokenType::Export => "export",
+      TokenType::Extends => "extends",
+      TokenType::False => "false",
+      TokenType::Finally => "finally",
+      TokenType::For => "for",
+      TokenType::Function => "function",
+      TokenType::If => "if",
+      TokenType::Import => "import",
+      TokenType::In => "in",
+      TokenType::Instanceof => "instanceof",
+      TokenType::New => "new",
+      TokenType::Null => "null",
+      TokenType::Return => "return",
+      TokenType::Super => "super",
+      TokenType::Switch => "switch",
+      TokenType::This => "this",
+      TokenType::Throw => "throw",
+      TokenType::True => "true",
+      TokenType::Try => "try",
+      TokenType::Typeof => "typeof",
+      TokenType::Var => "var",
+      TokenType::Void => "void",
+      TokenType::While => "while",
+      TokenType::With => "with",
+      TokenType::Yield => "yield",
+      TokenType::Identifier(s) | TokenType::EscapedKeyword(s) => s,
       _ => panic!("unexpected token_type"),
     };
     s.to_owned()
@@ -415,44 +414,44 @@ pub fn is_reserved_word_strict(s: &str) -> bool {
 
 fn lookup_unescaped_keyword(s: &str) -> Option<TokenType> {
   match s {
-    "await" => Some(TokenType::AWAIT),
-    "break" => Some(TokenType::BREAK),
-    "case" => Some(TokenType::CASE),
-    "catch" => Some(TokenType::CATCH),
-    "class" => Some(TokenType::CLASS),
-    "const" => Some(TokenType::CONST),
-    "continue" => Some(TokenType::CONTINUE),
-    "debugger" => Some(TokenType::DEBUGGER),
-    "default" => Some(TokenType::DEFAULT),
-    "delete" => Some(TokenType::DELETE),
-    "do" => Some(TokenType::DO),
-    "else" => Some(TokenType::ELSE),
-    "enum" => Some(TokenType::ENUM),
-    "export" => Some(TokenType::EXPORT),
-    "extends" => Some(TokenType::EXTENDS),
-    "false" => Some(TokenType::FALSE),
-    "finally" => Some(TokenType::FINALLY),
-    "for" => Some(TokenType::FOR),
-    "function" => Some(TokenType::FUNCTION),
-    "if" => Some(TokenType::IF),
-    "import" => Some(TokenType::IMPORT),
-    "in" => Some(TokenType::IN),
-    "instanceof" => Some(TokenType::INSTANCEOF),
-    "new" => Some(TokenType::NEW),
-    "null" => Some(TokenType::NULL),
-    "return" => Some(TokenType::RETURN),
-    "super" => Some(TokenType::SUPER),
-    "switch" => Some(TokenType::SWITCH),
-    "this" => Some(TokenType::THIS),
-    "throw" => Some(TokenType::THROW),
-    "true" => Some(TokenType::TRUE),
-    "try" => Some(TokenType::TRY),
-    "typeof" => Some(TokenType::TYPEOF),
-    "var" => Some(TokenType::VAR),
-    "void" => Some(TokenType::VOID),
-    "while" => Some(TokenType::WHILE),
-    "with" => Some(TokenType::WITH),
-    "yield" => Some(TokenType::YIELD),
+    "await" => Some(TokenType::Await),
+    "break" => Some(TokenType::Break),
+    "case" => Some(TokenType::Case),
+    "catch" => Some(TokenType::Catch),
+    "class" => Some(TokenType::Class),
+    "const" => Some(TokenType::Const),
+    "continue" => Some(TokenType::Continue),
+    "debugger" => Some(TokenType::Debugger),
+    "default" => Some(TokenType::Default),
+    "delete" => Some(TokenType::Delete),
+    "do" => Some(TokenType::Do),
+    "else" => Some(TokenType::Else),
+    "enum" => Some(TokenType::Enum),
+    "export" => Some(TokenType::Export),
+    "extends" => Some(TokenType::Extends),
+    "false" => Some(TokenType::False),
+    "finally" => Some(TokenType::Finally),
+    "for" => Some(TokenType::For),
+    "function" => Some(TokenType::Function),
+    "if" => Some(TokenType::If),
+    "import" => Some(TokenType::Import),
+    "in" => Some(TokenType::In),
+    "instanceof" => Some(TokenType::Instanceof),
+    "new" => Some(TokenType::New),
+    "null" => Some(TokenType::Null),
+    "return" => Some(TokenType::Return),
+    "super" => Some(TokenType::Super),
+    "switch" => Some(TokenType::Switch),
+    "this" => Some(TokenType::This),
+    "throw" => Some(TokenType::Throw),
+    "true" => Some(TokenType::True),
+    "try" => Some(TokenType::Try),
+    "typeof" => Some(TokenType::Typeof),
+    "var" => Some(TokenType::Var),
+    "void" => Some(TokenType::Void),
+    "while" => Some(TokenType::While),
+    "with" => Some(TokenType::With),
+    "yield" => Some(TokenType::Yield),
     _ => None,
   }
 }
@@ -460,7 +459,7 @@ fn lookup_unescaped_keyword(s: &str) -> Option<TokenType> {
 pub fn lookup_keyword(s: &str, had_escaped: bool) -> Option<TokenType> {
   lookup_unescaped_keyword(s).map(|t| {
     if had_escaped {
-      TokenType::ESCAPED_KEYWORD(s.to_owned())
+      TokenType::EscapedKeyword(s.to_owned())
     } else {
       t
     }
