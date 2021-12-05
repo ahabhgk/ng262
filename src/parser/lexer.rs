@@ -1199,7 +1199,11 @@ block comment
     let source = r#"123_456_789"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    assert_token_type!(lexer, TokenType::Number(123_456_789.0), TokenType::EndOfSource);
+    assert_token_type!(
+      lexer,
+      TokenType::Number(123_456_789.0),
+      TokenType::EndOfSource
+    );
   }
 
   #[test]
@@ -1249,7 +1253,10 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_eq!(lexer.next().unwrap().token_type, TokenType::Semicolon);
     assert_eq!(lexer.peek().unwrap().token_type, TokenType::EndOfSource);
-    assert_eq!(lexer.peek_ahead().unwrap().token_type, TokenType::EndOfSource);
+    assert_eq!(
+      lexer.peek_ahead().unwrap().token_type,
+      TokenType::EndOfSource
+    );
   }
 
   #[test]
