@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use self::{
-  error::SyntaxError,
+  error::{SyntaxError, SyntaxErrorInfo},
   lexer::Lexer,
   nodes::{Location, Node, NodeBuilder, NodeType},
   scope::Scope,
@@ -39,6 +39,24 @@ impl UseStrict for Parser<'_, '_> {
 
   fn use_strict(&mut self, is_strict: bool) {
     self.strict.use_strict(is_strict);
+  }
+}
+
+impl SyntaxErrorInfo for Parser<'_, '_> {
+  fn line(&self) -> usize {
+    self.lexer.line()
+  }
+
+  fn index(&self) -> usize {
+    self.lexer.index()
+  }
+
+  fn get(&self, index: usize) -> Option<char> {
+    self.lexer.get(index)
+  }
+
+  fn slice(&self, start_index: usize, end_index: usize) -> String {
+    self.lexer.slice(start_index, end_index)
   }
 }
 

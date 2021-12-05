@@ -3,13 +3,13 @@ use num_bigint::BigInt;
 use unicode_xid::UnicodeXID;
 
 use super::{
-  error::{SyntaxError, SyntaxErrorTemplate},
+  error::{SyntaxError, SyntaxErrorInfo, SyntaxErrorTemplate},
   source::Source,
   strict::{Strict, UseStrict},
   tokens::{lookup_keyword, Token, TokenType},
 };
 
-fn is_line_terminator(c: char) -> bool {
+pub fn is_line_terminator(c: char) -> bool {
   matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}')
 }
 
@@ -86,6 +86,24 @@ impl UseStrict for Lexer<'_, '_> {
 
   fn use_strict(&mut self, is_strict: bool) {
     self.strict.use_strict(is_strict);
+  }
+}
+
+impl SyntaxErrorInfo for Lexer<'_, '_> {
+  fn index(&self) -> usize {
+    self.source.index()
+  }
+
+  fn line(&self) -> usize {
+    self.line
+  }
+
+  fn get(&self, cursor: usize) -> Option<char> {
+    self.source.get(cursor)
+  }
+
+  fn slice(&self, start_cursor: usize, end_cursor: usize) -> String {
+    self.source.slice(start_cursor, end_cursor)
   }
 }
 
@@ -195,8 +213,9 @@ impl Lexer<'_, '_> {
       self.forward()?;
       Ok(())
     } else {
-      Err(self.create_syntax_error(
-        self.source.position(),
+      Err(SyntaxError::from_index(
+        self,
+        0,
         SyntaxErrorTemplate::UnexpectedToken,
       ))
     }
@@ -207,8 +226,9 @@ impl Lexer<'_, '_> {
       self.forward()?;
       Ok(())
     } else {
-      Err(self.create_syntax_error(
-        self.source.position(),
+      Err(SyntaxError::from_index(
+        self,
+        0,
         SyntaxErrorTemplate::UnexpectedToken,
       ))
     }
@@ -246,7 +266,7 @@ impl<'i, 's> Lexer<'i, 's> {
     Token {
       token_type,
       start_index,
-      end_index: self.source.position(),
+      end_index: self.source.index(),
       line,
       column,
       had_line_terminator_before: self.line_terminator_before_next_token,
@@ -258,10 +278,9 @@ impl<'i, 's> Lexer<'i, 's> {
     self.skip_space()?;
 
     // set token location info after skipping space
-    let position = self.source.position();
-    let position_for_next_token = position;
-    let line_for_next_token = self.line;
-    let column_for_next_token = position - self.column_offset + 1;
+    let start_index = self.source.index();
+    let line = self.line;
+    let column = start_index - self.column_offset + 1;
 
     let token_type = if let Some(c) = self.source.current() {
       if c < char::from(127) {
@@ -483,22 +502,18 @@ impl<'i, 's> Lexer<'i, 's> {
     };
 
     match token_type {
-      Some(t) => Ok(self.create_token(
-        t,
-        position_for_next_token,
-        line_for_next_token,
-        column_for_next_token,
+      Some(t) => Ok(self.create_token(t, start_index, line, column)),
+      None => Err(SyntaxError::from_index(
+        self,
+        0,
+        SyntaxErrorTemplate::UnexpectedToken,
       )),
-      None => Err(
-        self
-          .create_syntax_error(position, SyntaxErrorTemplate::UnexpectedToken),
-      ),
     }
   }
 
   /// See https://tc39.es/ecma262/#sec-literals-numeric-literals
   fn scan_number(&mut self) -> Result<TokenType, SyntaxError> {
-    let start = self.source.position();
+    let start = self.source.index();
     let mut base = 10;
     let mut check: fn(char) -> bool = is_decimal_digit;
     // base
@@ -539,10 +554,12 @@ impl<'i, 's> Lexer<'i, 's> {
             self.source.forward();
           } else if c == '_' {
             if matches!(self.source.peek(), Some(p) if !check(p)) {
-              return Err(self.create_syntax_error(
-                self.source.position() + 1,
-                SyntaxErrorTemplate::UnexpectedToken,
-              ));
+              return Err(
+                SyntaxError::from_index(
+                  self,
+                  1,
+                  SyntaxErrorTemplate::UnexpectedToken,
+                ));
             }
             self.source.forward();
           } else {
@@ -556,7 +573,7 @@ impl<'i, 's> Lexer<'i, 's> {
     if self.source.current() == Some('n') {
       let buffer = self
         .source
-        .slice(start, self.source.position())
+        .slice(start, self.source.index())
         .replace('_', "");
       self.source.forward();
       return Ok(TokenType::BIGINT(
@@ -567,8 +584,9 @@ impl<'i, 's> Lexer<'i, 's> {
     // .
     if base == 10 && self.source.current() == Some('.') {
       if let Some('_') = self.source.next() {
-        return Err(self.create_syntax_error(
-          self.source.position(),
+        return Err(SyntaxError::from_index(
+          self,
+          0,
           SyntaxErrorTemplate::UnexpectedToken,
         ));
       }
@@ -581,8 +599,9 @@ impl<'i, 's> Lexer<'i, 's> {
     {
       self.source.forward();
       if let Some('_') = self.source.current() {
-        return Err(self.create_syntax_error(
-          self.source.position(),
+        return Err(SyntaxError::from_index(
+          self,
+          0,
           SyntaxErrorTemplate::UnexpectedToken,
         ));
       }
@@ -590,8 +609,9 @@ impl<'i, 's> Lexer<'i, 's> {
         self.source.forward();
       }
       if let Some('_') = self.source.current() {
-        return Err(self.create_syntax_error(
-          self.source.position(),
+        return Err(SyntaxError::from_index(
+          self,
+          0,
           SyntaxErrorTemplate::UnexpectedToken,
         ));
       }
@@ -599,8 +619,9 @@ impl<'i, 's> Lexer<'i, 's> {
     }
 
     if matches!(self.source.current(), Some(c) if is_identifier_start(c)) {
-      return Err(self.create_syntax_error(
-        self.source.position(),
+      return Err(SyntaxError::from_index(
+        self,
+        0,
         SyntaxErrorTemplate::UnexpectedToken,
       ));
     }
@@ -609,7 +630,7 @@ impl<'i, 's> Lexer<'i, 's> {
       .source
       .slice(
         if base == 10 { start } else { start + 2 },
-        self.source.position(),
+        self.source.index(),
       )
       .replace('_', "");
     const FORMAT: u128 = lexical::format::JAVASCRIPT_STRING;
@@ -627,8 +648,9 @@ impl<'i, 's> Lexer<'i, 's> {
     loop {
       match self.source.current() {
         None => {
-          return Err(self.create_syntax_error(
-            self.source.position(),
+          return Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::UnterminatedString,
           ))
         }
@@ -638,8 +660,9 @@ impl<'i, 's> Lexer<'i, 's> {
             break;
           }
           if c == '\r' || c == '\n' {
-            return Err(self.create_syntax_error(
-              self.source.position(),
+            return Err(SyntaxError::from_index(
+              self,
+              0,
               SyntaxErrorTemplate::UnterminatedString,
             ));
           }
@@ -647,8 +670,9 @@ impl<'i, 's> Lexer<'i, 's> {
           if c == '\\' {
             match self.source.current() {
               None => {
-                return Err(self.create_syntax_error(
-                  self.source.position(),
+                return Err(SyntaxError::from_index(
+                  self,
+                  0,
                   SyntaxErrorTemplate::UnterminatedString,
                 ))
               }
@@ -684,16 +708,18 @@ impl<'i, 's> Lexer<'i, 's> {
           had_escaped = true;
         }
         if matches!(self.source.next(), Some(c) if c != 'u') {
-          return Err(self.create_syntax_error(
-            self.source.position(),
+          return Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::InvalidUnicodeEscape,
           ));
         }
         self.source.forward();
         let raw = char::from_u32(self.scan_code_point()?).unwrap();
         if !check(c) {
-          return Err(self.create_syntax_error(
-            self.source.position(),
+          return Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::InvalidUnicodeEscape,
           ));
         }
@@ -728,19 +754,21 @@ impl<'i, 's> Lexer<'i, 's> {
       match self.source.index_of('}') {
         Some(end) => {
           self.source.forward();
-          let code = self.scan_hex(end - self.source.position())?;
+          let code = self.scan_hex(end - self.source.index())?;
           self.source.forward();
           if code > 0x10FFFF {
-            Err(self.create_syntax_error(
-              self.source.position(),
+            Err(SyntaxError::from_index(
+              self,
+              0,
               SyntaxErrorTemplate::InvalidCodePoint,
             ))
           } else {
             Ok(code)
           }
         }
-        None => Err(self.create_syntax_error(
-          self.source.position(),
+        None => Err(SyntaxError::from_index(
+          self,
+          0,
           SyntaxErrorTemplate::InvalidUnicodeEscape,
         )),
       }
@@ -751,8 +779,9 @@ impl<'i, 's> Lexer<'i, 's> {
 
   fn scan_hex(&mut self, len: usize) -> Result<u32, SyntaxError> {
     if len == 0 {
-      return Err(self.create_syntax_error(
-        self.source.position(),
+      return Err(SyntaxError::from_index(
+        self,
+        0,
         SyntaxErrorTemplate::InvalidCodePoint,
       ));
     }
@@ -764,8 +793,9 @@ impl<'i, 's> Lexer<'i, 's> {
           n = (n << 4) | c.to_digit(16).unwrap();
         }
         _ => {
-          return Err(self.create_syntax_error(
-            self.source.position(),
+          return Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::UnexpectedToken,
           ))
         }
@@ -816,8 +846,9 @@ impl<'i, 's> Lexer<'i, 's> {
           self.source.forward();
           Ok('\u{0000}')
         } else if self.is_strict() && is_decimal_digit(c) {
-          Err(self.create_syntax_error(
-            self.source.position(),
+          Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::IllegalOctalEscape,
           ))
         } else {
@@ -829,7 +860,7 @@ impl<'i, 's> Lexer<'i, 's> {
   }
 
   fn skip_hashbang_comment(&mut self) {
-    if self.source.position() == 0
+    if self.source.index() == 0
       && matches!(self.source.current(), Some('#'))
       && matches!(self.source.peek(), Some('!'))
     {
@@ -872,7 +903,7 @@ impl<'i, 's> Lexer<'i, 's> {
       self.source.forward();
     }
     self.line += 1;
-    self.column_offset = self.source.position();
+    self.column_offset = self.source.index();
     self.line_terminator_before_next_token = true;
   }
 
@@ -890,7 +921,7 @@ impl<'i, 's> Lexer<'i, 's> {
   }
 
   fn skip_block_comment(&mut self) -> Result<(), SyntaxError> {
-    let position = self.source.position();
+    let position = self.source.index();
     self.source.forward();
     self.source.forward();
     while let Some(c) = self.source.current() {
@@ -908,77 +939,15 @@ impl<'i, 's> Lexer<'i, 's> {
           }
         }
         None => {
-          return Err(self.create_syntax_error(
-            position,
+          return Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::UnterminatedComment,
           ))
         }
       }
     }
     Ok(())
-  }
-
-  // TODO: use trait to connect with SyntaxError
-  pub fn source_position(&self) -> usize {
-    self.source.position()
-  }
-
-  // TODO: move to SyntaxError
-  pub fn create_syntax_error(
-    &self,
-    position: usize,
-    template: SyntaxErrorTemplate,
-  ) -> SyntaxError {
-    let start_index = position;
-    let end_index = position + 1;
-    let line = self.line;
-
-    /*
-     * Source looks like:
-     *
-     *  const a = 1;
-     *  const b 'string string string'; // a string
-     *  const c = 3;                  |            |
-     *  |       |                     |            |
-     *  |       | startIndex          | endIndex   |
-     *  | lineStart                                | lineEnd
-     *
-     * Exception looks like:
-     *
-     *  const b 'string string string'; // a string
-     *          ^^^^^^^^^^^^^^^^^^^^^^
-     *  SyntaxError: unexpected token
-     */
-
-    let mut line_start = start_index;
-    while let Some(c) = self.source.get(line_start) {
-      if !is_line_terminator(c) {
-        line_start -= 1;
-      }
-    }
-
-    let mut line_end = start_index;
-    while let Some(c) = self.source.get(line_end) {
-      if !is_line_terminator(c) {
-        line_end += 1;
-      }
-    }
-
-    let column = start_index - line_start + 1;
-    let message = format!("{}", template);
-    // TODO: specifier
-    let decoration = format!(
-      "\n{}:{}\n{}\n{}{}",
-      line,
-      column,
-      self.source.slice(line_start, line_end),
-      " ".repeat(start_index - line_start),
-      "^".repeat(1.max(end_index - start_index)),
-    );
-    SyntaxError {
-      message,
-      decoration,
-    }
   }
 
   // fn unexpected(&self) -> SyntaxError {

@@ -20,8 +20,9 @@ impl Parser<'_, '_> {
       let node = self.finish(node, node_type);
       Ok(node)
     } else {
-      Err(self.lexer.create_syntax_error(
-        self.lexer.source_position(),
+      Err(SyntaxError::from_index(
+        self,
+        0,
         SyntaxErrorTemplate::UnexpectedToken,
       ))
     }

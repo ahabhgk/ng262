@@ -13,7 +13,7 @@ impl<'a> Source<'a> {
     }
   }
 
-  pub fn position(&self) -> usize {
+  pub fn index(&self) -> usize {
     self.index
   }
 
