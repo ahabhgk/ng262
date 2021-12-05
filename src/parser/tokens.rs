@@ -270,37 +270,24 @@ impl TokenType {
       _ => unreachable!("unexpected char"),
     }
   }
-}
 
-#[derive(Debug, Clone)]
-pub struct Token {
-  pub token_type: TokenType,
-  pub start_index: usize,
-  pub end_index: usize,
-  pub line: usize,
-  pub column: usize,
-  pub had_line_terminator_before: bool,
-  pub had_escaped: bool,
-}
-
-impl Token {
   pub fn is_automatic_semicolon(&self) -> bool {
     matches!(
-      self.token_type,
+      self,
       TokenType::SEMICOLON | TokenType::RBRACE | TokenType::EOS
     )
   }
 
   pub fn is_member(&self) -> bool {
     matches!(
-      self.token_type,
+      self,
       TokenType::TEMPLATE | TokenType::PERIOD | TokenType::LBRACK
     )
   }
 
   pub fn is_property_call(&self) -> bool {
     matches!(
-      self.token_type,
+      self,
       TokenType::TEMPLATE
         | TokenType::PERIOD
         | TokenType::LBRACK
@@ -311,7 +298,7 @@ impl Token {
 
   pub fn is_keyword(&self) -> bool {
     matches!(
-      self.token_type,
+      self,
       TokenType::AWAIT
         | TokenType::BREAK
         | TokenType::CASE
@@ -352,6 +339,63 @@ impl Token {
         | TokenType::YIELD
     )
   }
+
+  pub fn identifier_or_keyword_value(&self) -> String {
+    let s = match self {
+      TokenType::AWAIT => "await",
+      TokenType::BREAK => "break",
+      TokenType::CASE => "case",
+      TokenType::CATCH => "catch",
+      TokenType::CLASS => "class",
+      TokenType::CONST => "const",
+      TokenType::CONTINUE => "continue",
+      TokenType::DEBUGGER => "debugger",
+      TokenType::DEFAULT => "default",
+      TokenType::DELETE => "delete",
+      TokenType::DO => "do",
+      TokenType::ELSE => "else",
+      TokenType::ENUM => "enum",
+      TokenType::EXPORT => "export",
+      TokenType::EXTENDS => "extends",
+      TokenType::FALSE => "false",
+      TokenType::FINALLY => "finally",
+      TokenType::FOR => "for",
+      TokenType::FUNCTION => "function",
+      TokenType::IF => "if",
+      TokenType::IMPORT => "import",
+      TokenType::IN => "in",
+      TokenType::INSTANCEOF => "instanceof",
+      TokenType::NEW => "new",
+      TokenType::NULL => "null",
+      TokenType::RETURN => "return",
+      TokenType::SUPER => "super",
+      TokenType::SWITCH => "switch",
+      TokenType::THIS => "this",
+      TokenType::THROW => "throw",
+      TokenType::TRUE => "true",
+      TokenType::TRY => "try",
+      TokenType::TYPEOF => "typeof",
+      TokenType::VAR => "var",
+      TokenType::VOID => "void",
+      TokenType::WHILE => "while",
+      TokenType::WITH => "with",
+      TokenType::YIELD => "yield",
+      TokenType::IDENTIFIER(s) | TokenType::ESCAPED_KEYWORD(s) => s,
+      _ => panic!("unexpected token_type"),
+    };
+    s.to_owned()
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct Token {
+  pub token_type: TokenType,
+  pub start_index: usize,
+  pub end_index: usize,
+  pub line: usize,
+  pub column: usize,
+  pub had_line_terminator_before: bool,
+  pub had_escaped: bool,
 }
 
 pub fn is_reserved_word_strict(s: &str) -> bool {

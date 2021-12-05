@@ -14,6 +14,12 @@ impl fmt::Display for SyntaxError {
   }
 }
 
+impl SyntaxError {
+  pub fn from_position() -> Self {
+    todo!()
+  }
+}
+
 #[derive(Debug)]
 pub enum SyntaxErrorTemplate {
   UnterminatedComment,

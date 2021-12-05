@@ -1,12 +1,11 @@
-use std::str::Chars;
-
 use lexical::parse_float_options;
 use num_bigint::BigInt;
 use unicode_xid::UnicodeXID;
 
 use super::{
   error::{SyntaxError, SyntaxErrorTemplate},
-  strict::Strict,
+  source::Source,
+  strict::{Strict, UseStrict},
   tokens::{lookup_keyword, Token, TokenType},
 };
 
@@ -67,66 +66,8 @@ fn is_trail_surrogate(cp: char) -> bool {
     && cp <= unsafe { char::from_u32_unchecked(0xDFFF) }
 }
 
-struct Input<'a> {
-  iter: Chars<'a>,
-  index: usize,
-}
-
-impl<'a> Input<'a> {
-  pub fn new(source: &'a str) -> Self {
-    Self {
-      iter: source.chars(),
-      index: 0, // TODO: read_index starts with -1?
-    }
-  }
-
-  pub fn position(&self) -> usize {
-    self.index
-  }
-
-  pub fn current(&self) -> Option<char> {
-    self.get(self.index)
-  }
-
-  pub fn peek(&self) -> Option<char> {
-    self.get(self.index + 1)
-  }
-
-  pub fn forward(&mut self) {
-    self.index += 1;
-  }
-
-  pub fn backward(&mut self) {
-    self.index -= 1;
-  }
-
-  pub fn next(&mut self) -> Option<char> {
-    self.forward();
-    self.current()
-  }
-
-  pub fn get(&self, i: usize) -> Option<char> {
-    self.iter.clone().nth(i)
-  }
-
-  pub fn index_of(&self, c: char) -> Option<usize> {
-    for (i, ch) in self.iter.clone().skip(self.index).enumerate() {
-      if ch == c {
-        return Some(i + self.index);
-      }
-    }
-    None
-  }
-
-  pub fn slice(&self, start: usize, end: usize) -> String {
-    let str = self.iter.as_str();
-    let str = &str[start..end];
-    str.to_owned()
-  }
-}
-
 pub struct Lexer<'i, 's> {
-  source: Input<'i>,
+  source: Source<'i>,
   current_token: Option<Token>,
   peek_token: Option<Token>,
   peek_ahead_token: Option<Token>,
@@ -134,10 +75,25 @@ pub struct Lexer<'i, 's> {
   column_offset: usize,
   line_terminator_before_next_token: bool,
   had_escaped: bool,
+  // TODO: use derive marco
   strict: &'s mut Strict,
 }
 
+impl UseStrict for Lexer<'_, '_> {
+  fn is_strict(&self) -> bool {
+    self.strict.is_strict()
+  }
+
+  fn use_strict(&mut self, is_strict: bool) {
+    self.strict.use_strict(is_strict);
+  }
+}
+
 impl Lexer<'_, '_> {
+  pub fn get_source(&self) -> &Source {
+    &self.source
+  }
+
   pub fn forward(&mut self) -> Result<(), SyntaxError> {
     self.current_token = Some(self.peek()?);
     self.peek_token = Some(self.peek_ahead()?);
@@ -260,9 +216,9 @@ impl Lexer<'_, '_> {
 }
 
 impl<'i, 's> Lexer<'i, 's> {
-  pub fn new(source: &'i str, strict: &'s mut Strict) -> Self {
+  pub fn new(s: &'i str, strict: &'s mut Strict) -> Self {
     Self {
-      source: Input::new(source),
+      source: Source::new(s),
       current_token: None,
       peek_token: None,
       peek_ahead_token: None,
@@ -859,7 +815,7 @@ impl<'i, 's> Lexer<'i, 's> {
         {
           self.source.forward();
           Ok('\u{0000}')
-        } else if self.strict.is_strict_mode() && is_decimal_digit(c) {
+        } else if self.is_strict() && is_decimal_digit(c) {
           Err(self.create_syntax_error(
             self.source.position(),
             SyntaxErrorTemplate::IllegalOctalEscape,
@@ -962,7 +918,13 @@ impl<'i, 's> Lexer<'i, 's> {
     Ok(())
   }
 
-  fn create_syntax_error(
+  // TODO: use trait to connect with SyntaxError
+  pub fn source_position(&self) -> usize {
+    self.source.position()
+  }
+
+  // TODO: move to SyntaxError
+  pub fn create_syntax_error(
     &self,
     position: usize,
     template: SyntaxErrorTemplate,
@@ -1397,5 +1359,20 @@ block comment
     assert!(lexer.expect_identifier("async").is_ok());
     assert!(lexer.expect_identifier("async").is_err());
     assert!(lexer.expect(TokenType::EOS).is_ok());
+  }
+
+  #[test]
+  fn lexer_next() {
+    let source = r#"async;"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    let peek = lexer.peek().unwrap();
+    assert!(lexer.matches(TokenType::IDENTIFIER("async".to_owned()), peek));
+    let next = lexer.next().unwrap();
+    assert!(lexer.matches(TokenType::IDENTIFIER("async".to_owned()), next));
+    let next = lexer.next().unwrap();
+    assert!(lexer.matches(TokenType::SEMICOLON, next));
+    let next = lexer.next().unwrap();
+    assert!(lexer.matches(TokenType::EOS, next));
   }
 }

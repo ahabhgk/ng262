@@ -1,30 +1,65 @@
 use std::collections::HashSet;
 
-use self::{error::SyntaxError, scope::Scope};
+use self::{
+  error::SyntaxError,
+  lexer::Lexer,
+  nodes::{Location, Node, NodeBuilder, NodeType},
+  scope::Scope,
+  strict::{Strict, UseStrict},
+};
 
-pub mod error;
-pub mod lexer;
-pub mod scope;
-pub mod strict;
-pub mod tokens;
+mod error;
+mod identifier;
+mod lexer;
+mod nodes;
+mod scope;
+mod source;
+mod strict;
+mod tokens;
 
 struct State {
   has_top_level_await: bool,
   json: bool,
 }
 
-pub struct Parser {
-  source: String,
+pub struct Parser<'i, 's> {
+  lexer: Lexer<'i, 's>,
   specifier: Option<String>,
   early_errors: HashSet<SyntaxError>,
   state: State,
   scope: Scope,
+  // TODO: use derive marco
+  strict: &'s mut Strict,
 }
 
-impl Parser {}
+impl UseStrict for Parser<'_, '_> {
+  fn is_strict(&self) -> bool {
+    self.strict.is_strict()
+  }
 
-pub struct Location {
-  index: usize,
-  line: usize,
-  column: usize,
+  fn use_strict(&mut self, is_strict: bool) {
+    self.strict.use_strict(is_strict);
+  }
+}
+
+impl Parser<'_, '_> {
+  fn start(&mut self) -> Result<NodeBuilder, SyntaxError> {
+    let peek = self.lexer.peek()?;
+    let location = Location {
+      index: peek.start_index,
+      line: peek.line,
+      column: peek.column,
+    };
+    Ok(NodeBuilder::new(location, self.is_strict()))
+  }
+
+  fn finish(&mut self, node: NodeBuilder, node_type: NodeType) -> Node {
+    let current = self.lexer.current();
+    let location = Location {
+      index: current.end_index,
+      line: current.line,
+      column: current.column,
+    };
+    node.build(location, node_type, self.lexer.get_source())
+  }
 }
