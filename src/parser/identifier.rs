@@ -5,7 +5,7 @@ use super::{
   Parser,
 };
 
-impl Parser<'_, '_> {
+impl Parser<'_> {
   // IdentifierName
   fn parse_identifier_name(&mut self) -> Result<Node, SyntaxError> {
     let node = self.start()?;
@@ -20,10 +20,10 @@ impl Parser<'_, '_> {
       let node = self.finish(node, node_type);
       Ok(node)
     } else {
-      let peek = &self.lexer.peek()?;
+      let peek = peek.to_owned();
       Err(SyntaxError::from_token(
         self,
-        peek,
+        &peek,
         SyntaxErrorTemplate::UnexpectedToken,
       ))
     }

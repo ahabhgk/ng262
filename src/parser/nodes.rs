@@ -1,4 +1,4 @@
-use super::source::Source;
+use super::source::SourceText;
 
 pub struct Location {
   pub index: usize,
@@ -10,17 +10,17 @@ pub enum NodeType {
   IdentifierName { name: String },
 }
 
-pub struct Node<'i> {
+pub struct Node {
   node_type: NodeType,
   start: Location,
   end: Location,
   is_strict: bool,
-  source: &'i Source<'i>,
+  source_text: String,
 }
 
 pub struct NodeBuilder {
-  start: Location,
-  is_strict: bool,
+  pub start: Location,
+  pub is_strict: bool,
 }
 
 impl NodeBuilder {
@@ -28,28 +28,30 @@ impl NodeBuilder {
     Self { start, is_strict }
   }
 
-  pub fn build<'i>(
+  pub fn build(
     self,
     end: Location,
     node_type: NodeType,
-    source: &'i Source,
-  ) -> Node<'i> {
+    source_text: String,
+  ) -> Node {
     Node {
       node_type,
       start: self.start,
       end,
       is_strict: self.is_strict,
-      source,
+      source_text,
     }
   }
 }
 
-impl Node<'_> {
+impl SourceText for Node {
+  fn source_text(&self) -> &str {
+    self.source_text.as_str()
+  }
+}
+
+impl Node {
   pub fn start(location: Location, is_strict: bool) -> NodeBuilder {
     NodeBuilder::new(location, is_strict)
-  }
-
-  pub fn source_text() -> String {
-    todo!()
   }
 }

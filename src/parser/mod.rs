@@ -22,17 +22,17 @@ struct State {
   json: bool,
 }
 
-pub struct Parser<'i, 's> {
-  lexer: Lexer<'i, 's>,
+pub struct Parser<'strict> {
+  lexer: Lexer<'strict>,
   specifier: Option<String>,
   early_errors: HashSet<SyntaxError>,
   state: State,
   scope: Scope,
   // TODO: use derive marco
-  strict: &'s mut Strict,
+  strict: &'strict mut Strict,
 }
 
-impl UseStrict for Parser<'_, '_> {
+impl UseStrict for Parser<'_> {
   fn is_strict(&self) -> bool {
     self.strict.is_strict()
   }
@@ -42,7 +42,7 @@ impl UseStrict for Parser<'_, '_> {
   }
 }
 
-impl SyntaxErrorInfo for Parser<'_, '_> {
+impl SyntaxErrorInfo for Parser<'_> {
   fn line(&self) -> usize {
     self.lexer.line()
   }
@@ -60,7 +60,7 @@ impl SyntaxErrorInfo for Parser<'_, '_> {
   }
 }
 
-impl Parser<'_, '_> {
+impl Parser<'_> {
   fn start(&mut self) -> Result<NodeBuilder, SyntaxError> {
     let peek = self.lexer.peek()?;
     let location = Location {
@@ -73,11 +73,13 @@ impl Parser<'_, '_> {
 
   fn finish(&mut self, node: NodeBuilder, node_type: NodeType) -> Node {
     let current = self.lexer.current();
+    let index = current.end_index;
     let location = Location {
-      index: current.end_index,
+      index,
       line: current.line,
       column: current.column,
     };
-    node.build(location, node_type, self.lexer.get_source())
+    let source_text = self.lexer.get_source().slice(node.start.index, index);
+    node.build(location, node_type, source_text)
   }
 }

@@ -1,5 +1,7 @@
 use num_bigint::BigInt;
 
+use super::source::SourceText;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
   // BEGIN PropertyOrCall
@@ -395,6 +397,13 @@ pub struct Token {
   pub column: usize,
   pub had_line_terminator_before: bool,
   pub had_escaped: bool,
+  pub source_text: String,
+}
+
+impl SourceText for Token {
+  fn source_text(&self) -> &str {
+    self.source_text.as_str()
+  }
 }
 
 pub fn is_reserved_word_strict(s: &str) -> bool {

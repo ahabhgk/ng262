@@ -1,12 +1,13 @@
 use std::str::Chars;
 
-pub struct Source<'a> {
-  iter: Chars<'a>,
+#[derive(Debug)]
+pub struct Source {
+  iter: Chars<'static>,
   index: usize,
 }
 
-impl<'a> Source<'a> {
-  pub fn new(s: &'a str) -> Self {
+impl Source {
+  pub fn new(s: &'static str) -> Self {
     Self {
       iter: s.chars(),
       index: 0, // TODO: read_index starts with -1?
@@ -56,4 +57,8 @@ impl<'a> Source<'a> {
     let str = &str[start..end];
     str.to_owned()
   }
+}
+
+pub trait SourceText {
+  fn source_text(&self) -> &str;
 }
