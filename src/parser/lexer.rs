@@ -1,16 +1,15 @@
-use std::str::Chars;
-
 use lexical::parse_float_options;
 use num_bigint::BigInt;
 use unicode_xid::UnicodeXID;
 
 use super::{
-  error::{SyntaxError, SyntaxErrorTemplate},
-  strict::Strict,
+  error::{SyntaxError, SyntaxErrorInfo, SyntaxErrorTemplate},
+  source::{Source, SourceText},
+  strict::{Strict, UseStrict},
   tokens::{lookup_keyword, Token, TokenType},
 };
 
-fn is_line_terminator(c: char) -> bool {
+pub fn is_line_terminator(c: char) -> bool {
   matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}')
 }
 
@@ -67,137 +66,112 @@ fn is_trail_surrogate(cp: char) -> bool {
     && cp <= unsafe { char::from_u32_unchecked(0xDFFF) }
 }
 
-struct Input<'a> {
-  iter: Chars<'a>,
-  index: usize,
-}
-
-impl<'a> Input<'a> {
-  pub fn new(source: &'a str) -> Self {
-    Self {
-      iter: source.chars(),
-      index: 0, // TODO: read_index starts with -1?
-    }
-  }
-
-  pub fn position(&self) -> usize {
-    self.index
-  }
-
-  pub fn current(&self) -> Option<char> {
-    self.get(self.index)
-  }
-
-  pub fn peek(&self) -> Option<char> {
-    self.get(self.index + 1)
-  }
-
-  pub fn forward(&mut self) {
-    self.index += 1;
-  }
-
-  pub fn backward(&mut self) {
-    self.index -= 1;
-  }
-
-  pub fn next(&mut self) -> Option<char> {
-    self.forward();
-    self.current()
-  }
-
-  pub fn get(&self, i: usize) -> Option<char> {
-    self.iter.clone().nth(i)
-  }
-
-  pub fn index_of(&self, c: char) -> Option<usize> {
-    for (i, ch) in self.iter.clone().skip(self.index).enumerate() {
-      if ch == c {
-        return Some(i + self.index);
-      }
-    }
-    None
-  }
-
-  pub fn slice(&self, start: usize, end: usize) -> String {
-    let str = self.iter.as_str();
-    let str = &str[start..end];
-    str.to_owned()
-  }
-}
-
-pub struct Lexer<'i, 's> {
-  source: Input<'i>,
-  current_token: Option<Token>,
-  peek_token: Option<Token>,
-  peek_ahead_token: Option<Token>,
+pub struct Lexer<'strict> {
+  source: Source,
+  // start
   line: usize,
   column_offset: usize,
   line_terminator_before_next_token: bool,
   had_escaped: bool,
-  strict: &'s mut Strict,
+  // TODO: use derive marco
+  strict: &'strict mut Strict,
+  // iter
+  current_token: Option<Token>,
+  peek_token: Option<Token>,
+  peek_ahead_token: Option<Token>,
 }
 
-impl Lexer<'_, '_> {
+impl UseStrict for Lexer<'_> {
+  fn is_strict(&self) -> bool {
+    self.strict.is_strict()
+  }
+
+  fn use_strict(&mut self, is_strict: bool) {
+    self.strict.use_strict(is_strict);
+  }
+}
+
+impl SyntaxErrorInfo for Lexer<'_> {
+  fn index(&self) -> usize {
+    self.source.index()
+  }
+
+  fn line(&self) -> usize {
+    self.line
+  }
+
+  fn get(&self, cursor: usize) -> Option<char> {
+    self.source.get(cursor)
+  }
+
+  fn slice(&self, start_cursor: usize, end_cursor: usize) -> String {
+    self.source.slice(start_cursor, end_cursor)
+  }
+}
+
+impl<'strict> Lexer<'strict> {
+  pub fn new(s: &'static str, strict: &'strict mut Strict) -> Self {
+    Self {
+      source: Source::new(s),
+      line: 1,
+      column_offset: 0,
+      line_terminator_before_next_token: false,
+      had_escaped: false,
+      strict,
+      current_token: None,
+      peek_token: None,
+      peek_ahead_token: None,
+    }
+  }
+
+  pub fn get_source(&self) -> &Source {
+    &self.source
+  }
+
   pub fn forward(&mut self) -> Result<(), SyntaxError> {
-    self.current_token = Some(self.peek()?);
-    self.peek_token = Some(self.peek_ahead()?);
+    self.current_token = Some(self.peek()?.to_owned());
+    self.peek_token = Some(self.peek_ahead()?.to_owned());
     self.peek_ahead_token = None;
     Ok(())
   }
 
-  pub fn current(&self) -> Token {
+  pub fn current(&self) -> &Token {
     self
       .current_token
-      .clone()
+      .as_ref()
       .expect("current() should not call before forward()")
   }
 
-  #[allow(clippy::should_implement_trait)]
-  pub fn next(&mut self) -> Result<Token, SyntaxError> {
+  pub fn next(&mut self) -> Result<&Token, SyntaxError> {
     self.forward()?;
     Ok(self.current())
   }
 
-  pub fn peek(&mut self) -> Result<Token, SyntaxError> {
+  pub fn peek(&mut self) -> Result<&Token, SyntaxError> {
     if self.peek_token.is_none() {
       self.peek_token = Some(self.advance()?);
     }
-    Ok(self.peek_token.clone().unwrap())
+    Ok(self.peek_token.as_ref().unwrap())
   }
 
-  pub fn peek_ahead(&mut self) -> Result<Token, SyntaxError> {
+  pub fn peek_ahead(&mut self) -> Result<&Token, SyntaxError> {
     if self.peek_token.is_none() {
       self.peek_token = Some(self.advance()?);
     }
     if self.peek_ahead_token.is_none() {
       self.peek_ahead_token = Some(self.advance()?);
     }
-    Ok(self.peek_ahead_token.clone().unwrap())
-  }
-
-  pub fn matches(&self, token_type: TokenType, peek: Token) -> bool {
-    peek.token_type == token_type
-  }
-
-  pub fn matches_identifier(&self, id: &str, peek: Token) -> bool {
-    if matches!(peek.token_type, TokenType::IDENTIFIER(s) if s == id) {
-      !self
-        .source
-        .slice(peek.start_index, peek.end_index)
-        .contains('\\')
-    } else {
-      false
-    }
+    Ok(self.peek_ahead_token.as_ref().unwrap())
   }
 
   pub fn test(&mut self, token_type: TokenType) -> Result<bool, SyntaxError> {
     let peek = self.peek()?;
-    Ok(self.matches(token_type, peek))
+    Ok(Lexer::matches(token_type, peek))
   }
 
   pub fn test_identifier(&mut self, id: &str) -> Result<bool, SyntaxError> {
     let peek = self.peek()?;
-    Ok(self.matches_identifier(id, peek))
+    Ok(Lexer::matches_identifier(id, peek))
   }
 
   pub fn test_ahead(
@@ -205,7 +179,7 @@ impl Lexer<'_, '_> {
     token_type: TokenType,
   ) -> Result<bool, SyntaxError> {
     let peek = self.peek_ahead()?;
-    Ok(self.matches(token_type, peek))
+    Ok(Lexer::matches(token_type, peek))
   }
 
   pub fn test_ahead_identifier(
@@ -213,7 +187,7 @@ impl Lexer<'_, '_> {
     id: &str,
   ) -> Result<bool, SyntaxError> {
     let peek = self.peek_ahead()?;
-    Ok(self.matches_identifier(id, peek))
+    Ok(Lexer::matches_identifier(id, peek))
   }
 
   pub fn eat(&mut self, token_type: TokenType) -> Result<bool, SyntaxError> {
@@ -239,8 +213,10 @@ impl Lexer<'_, '_> {
       self.forward()?;
       Ok(())
     } else {
-      Err(self.create_syntax_error(
-        self.source.position(),
+      let peek = self.peek()?.to_owned();
+      Err(SyntaxError::from_token(
+        self,
+        &peek,
         SyntaxErrorTemplate::UnexpectedToken,
       ))
     }
@@ -251,26 +227,22 @@ impl Lexer<'_, '_> {
       self.forward()?;
       Ok(())
     } else {
-      Err(self.create_syntax_error(
-        self.source.position(),
+      Err(SyntaxError::from_index(
+        self,
+        0,
         SyntaxErrorTemplate::UnexpectedToken,
       ))
     }
   }
-}
 
-impl<'i, 's> Lexer<'i, 's> {
-  pub fn new(source: &'i str, strict: &'s mut Strict) -> Self {
-    Self {
-      source: Input::new(source),
-      current_token: None,
-      peek_token: None,
-      peek_ahead_token: None,
-      line: 1,
-      column_offset: 0,
-      line_terminator_before_next_token: false,
-      had_escaped: false,
-      strict,
+  pub fn matches(token_type: TokenType, peek: &Token) -> bool {
+    peek.token_type == token_type
+  }
+
+  pub fn matches_identifier(id: &str, peek: &Token) -> bool {
+    match &peek.token_type {
+      TokenType::Identifier(s) if s == id => !peek.source_text().contains('\\'),
+      _ => false,
     }
   }
 
@@ -287,14 +259,16 @@ impl<'i, 's> Lexer<'i, 's> {
     line: usize,
     column: usize,
   ) -> Token {
+    let end_index = self.source.index();
     Token {
       token_type,
       start_index,
-      end_index: self.source.position(),
+      end_index,
       line,
       column,
       had_line_terminator_before: self.line_terminator_before_next_token,
       had_escaped: self.had_escaped,
+      source_text: self.source.slice(start_index, end_index),
     }
   }
 
@@ -302,10 +276,9 @@ impl<'i, 's> Lexer<'i, 's> {
     self.skip_space()?;
 
     // set token location info after skipping space
-    let position = self.source.position();
-    let position_for_next_token = position;
-    let line_for_next_token = self.line;
-    let column_for_next_token = position - self.column_offset + 1;
+    let start_index = self.source.index();
+    let line = self.line;
+    let column = start_index - self.column_offset + 1;
 
     let token_type = if let Some(c) = self.source.current() {
       if c < char::from(127) {
@@ -320,7 +293,7 @@ impl<'i, 's> Lexer<'i, 's> {
             Some('.') => {
               if matches!(self.source.peek(), Some(c) if !is_decimal_digit(c)) {
                 self.source.forward();
-                Some(TokenType::OPTIONAL)
+                Some(TokenType::Optional)
               } else {
                 None
               }
@@ -328,171 +301,171 @@ impl<'i, 's> Lexer<'i, 's> {
             Some('?') => match self.source.next() {
               Some('=') => {
                 self.source.forward();
-                Some(TokenType::ASSIGN_NULLISH)
+                Some(TokenType::AssignNullish)
               }
-              _ => Some(TokenType::NULLISH),
+              _ => Some(TokenType::Nullish),
             },
-            _ => Some(TokenType::CONDITIONAL),
+            _ => Some(TokenType::Conditional),
           },
           // < <= << <<=
           '<' => match self.source.next() {
             Some('=') => {
               self.source.forward();
-              Some(TokenType::LTE)
+              Some(TokenType::LessThanEqual)
             }
             Some('<') => match self.source.next() {
               Some('=') => {
                 self.source.forward();
-                Some(TokenType::ASSIGN_SHL)
+                Some(TokenType::AssignShl)
               }
-              _ => Some(TokenType::SHL),
+              _ => Some(TokenType::Shl),
             },
-            _ => Some(TokenType::LT),
+            _ => Some(TokenType::LessThan),
           },
           // > >= >> >>= >>> >>>=
           '>' => match self.source.next() {
             Some('=') => {
               self.source.forward();
-              Some(TokenType::GTE)
+              Some(TokenType::GreaterThanEqual)
             }
             Some('>') => match self.source.next() {
               Some('>') => match self.source.next() {
                 Some('=') => {
                   self.source.forward();
-                  Some(TokenType::ASSIGN_SHR)
+                  Some(TokenType::AssignShr)
                 }
-                _ => Some(TokenType::SHR),
+                _ => Some(TokenType::Shr),
               },
               Some('=') => {
                 self.source.forward();
-                Some(TokenType::ASSIGN_SAR)
+                Some(TokenType::AssignSar)
               }
-              _ => Some(TokenType::SAR),
+              _ => Some(TokenType::Sar),
             },
-            _ => Some(TokenType::GT),
+            _ => Some(TokenType::GreaterThan),
           },
           // = == === =>
           '=' => match self.source.next() {
             Some('=') => match self.source.next() {
               Some('=') => {
                 self.source.forward();
-                Some(TokenType::EQ_STRICT)
+                Some(TokenType::StrictEqual)
               }
-              _ => Some(TokenType::EQ),
+              _ => Some(TokenType::Equal),
             },
             Some('>') => {
               self.source.forward();
-              Some(TokenType::ARROW)
+              Some(TokenType::Arrow)
             }
-            _ => Some(TokenType::ASSIGN),
+            _ => Some(TokenType::Assign),
           },
           // ! != !==
           '!' => match self.source.next() {
             Some('=') => match self.source.next() {
               Some('=') => {
                 self.source.forward();
-                Some(TokenType::NE_STRICT)
+                Some(TokenType::StrictNotEqual)
               }
-              _ => Some(TokenType::NE),
+              _ => Some(TokenType::NotEqual),
             },
-            _ => Some(TokenType::NOT),
+            _ => Some(TokenType::Not),
           },
           // + ++ +=
           '+' => match self.source.next() {
             Some('+') => {
               self.source.forward();
-              Some(TokenType::INC)
+              Some(TokenType::Inc)
             }
             Some('=') => {
               self.source.forward();
-              Some(TokenType::ASSIGN_ADD)
+              Some(TokenType::AssignAdd)
             }
-            _ => Some(TokenType::ADD),
+            _ => Some(TokenType::Add),
           },
           // - -- -=
           '-' => match self.source.next() {
             Some('-') => {
               self.source.forward();
-              Some(TokenType::DEC)
+              Some(TokenType::Dec)
             }
             Some('=') => {
               self.source.forward();
-              Some(TokenType::ASSIGN_SUB)
+              Some(TokenType::AssignSub)
             }
-            _ => Some(TokenType::SUB),
+            _ => Some(TokenType::Sub),
           },
           // * *= ** **=
           '*' => match self.source.next() {
             Some('=') => {
               self.source.forward();
-              Some(TokenType::ASSIGN_MUL)
+              Some(TokenType::AssignMul)
             }
             Some('*') => match self.source.next() {
               Some('=') => {
                 self.source.forward();
-                Some(TokenType::ASSIGN_EXP)
+                Some(TokenType::AssignExp)
               }
-              _ => Some(TokenType::EXP),
+              _ => Some(TokenType::Exp),
             },
-            _ => Some(TokenType::MUL),
+            _ => Some(TokenType::Mul),
           },
           // % %=
           '%' => match self.source.next() {
             Some('=') => {
               self.source.forward();
-              Some(TokenType::ASSIGN_MOD)
+              Some(TokenType::AssignMod)
             }
-            _ => Some(TokenType::MOD),
+            _ => Some(TokenType::Mod),
           },
           // / /=
           '/' => match self.source.next() {
             Some('=') => {
               self.source.forward();
-              Some(TokenType::ASSIGN_DIV)
+              Some(TokenType::AssignDiv)
             }
-            _ => Some(TokenType::DIV),
+            _ => Some(TokenType::Div),
           },
           // & && &= &&=
           '&' => match self.source.next() {
             Some('&') => match self.source.next() {
               Some('=') => {
                 self.source.forward();
-                Some(TokenType::ASSIGN_AND)
+                Some(TokenType::AssignAnd)
               }
-              _ => Some(TokenType::AND),
+              _ => Some(TokenType::And),
             },
-            Some('=') => Some(TokenType::ASSIGN_BIT_AND),
-            _ => Some(TokenType::BIT_AND),
+            Some('=') => Some(TokenType::AssignBitAnd),
+            _ => Some(TokenType::BitAnd),
           },
           // | || |= ||=
           '|' => match self.source.next() {
             Some('|') => match self.source.next() {
               Some('=') => {
                 self.source.forward();
-                Some(TokenType::ASSIGN_OR)
+                Some(TokenType::AssignOr)
               }
-              _ => Some(TokenType::OR),
+              _ => Some(TokenType::Or),
             },
             Some('=') => {
               self.source.forward();
-              Some(TokenType::ASSIGN_BIT_OR)
+              Some(TokenType::AssignBitOr)
             }
-            _ => Some(TokenType::BIT_OR),
+            _ => Some(TokenType::BitOr),
           },
           // ^ ^=
           '^' => match self.source.next() {
             Some('=') => {
               self.source.forward();
-              Some(TokenType::ASSIGN_BIT_XOR)
+              Some(TokenType::AssignBitXor)
             }
-            _ => Some(TokenType::BIT_XOR),
+            _ => Some(TokenType::BitXor),
           },
           // . ... NUMBER
           '.' => match self.source.next() {
             Some('.') => {
               if let Some('.') = self.source.next() {
                 self.source.forward();
-                Some(TokenType::ELLIPSIS)
+                Some(TokenType::Ellipsis)
               } else {
                 None
               }
@@ -501,7 +474,7 @@ impl<'i, 's> Lexer<'i, 's> {
               self.source.backward();
               Some(self.scan_number()?)
             }
-            _ => Some(TokenType::PERIOD),
+            _ => Some(TokenType::Period),
           },
           '"' | '\'' => {
             self.source.forward();
@@ -523,26 +496,22 @@ impl<'i, 's> Lexer<'i, 's> {
         None
       }
     } else {
-      Some(TokenType::EOS)
+      Some(TokenType::EndOfSource)
     };
 
     match token_type {
-      Some(t) => Ok(self.create_token(
-        t,
-        position_for_next_token,
-        line_for_next_token,
-        column_for_next_token,
+      Some(t) => Ok(self.create_token(t, start_index, line, column)),
+      None => Err(SyntaxError::from_index(
+        self,
+        0,
+        SyntaxErrorTemplate::UnexpectedToken,
       )),
-      None => Err(
-        self
-          .create_syntax_error(position, SyntaxErrorTemplate::UnexpectedToken),
-      ),
     }
   }
 
   /// See https://tc39.es/ecma262/#sec-literals-numeric-literals
   fn scan_number(&mut self) -> Result<TokenType, SyntaxError> {
-    let start = self.source.position();
+    let start = self.source.index();
     let mut base = 10;
     let mut check: fn(char) -> bool = is_decimal_digit;
     // base
@@ -554,12 +523,12 @@ impl<'i, 's> Lexer<'i, 's> {
         Some('e' | 'E' | '.') => {}
         Some('n') => {
           self.source.forward();
-          return Ok(TokenType::BIGINT(
+          return Ok(TokenType::BigInt(
             BigInt::parse_bytes(b"0", 10)
               .expect("failed to parse string as a bigint"),
           ));
         }
-        _ => return Ok(TokenType::NUMBER(0.0)),
+        _ => return Ok(TokenType::Number(0.0)),
       }
       check = match base {
         16 => is_hex_digit,
@@ -570,7 +539,7 @@ impl<'i, 's> Lexer<'i, 's> {
       };
       if base != 10 {
         if matches!(self.source.peek(), Some(c) if !check(c)) {
-          return Ok(TokenType::NUMBER(0.0));
+          return Ok(TokenType::Number(0.0));
         }
         self.source.forward();
       }
@@ -583,10 +552,12 @@ impl<'i, 's> Lexer<'i, 's> {
             self.source.forward();
           } else if c == '_' {
             if matches!(self.source.peek(), Some(p) if !check(p)) {
-              return Err(self.create_syntax_error(
-                self.source.position() + 1,
-                SyntaxErrorTemplate::UnexpectedToken,
-              ));
+              return Err(
+                SyntaxError::from_index(
+                  self,
+                  1,
+                  SyntaxErrorTemplate::UnexpectedToken,
+                ));
             }
             self.source.forward();
           } else {
@@ -600,10 +571,10 @@ impl<'i, 's> Lexer<'i, 's> {
     if self.source.current() == Some('n') {
       let buffer = self
         .source
-        .slice(start, self.source.position())
+        .slice(start, self.source.index())
         .replace('_', "");
       self.source.forward();
-      return Ok(TokenType::BIGINT(
+      return Ok(TokenType::BigInt(
         BigInt::parse_bytes(buffer.as_bytes(), 10)
           .expect("failed to parse string as a bigint"),
       ));
@@ -611,8 +582,9 @@ impl<'i, 's> Lexer<'i, 's> {
     // .
     if base == 10 && self.source.current() == Some('.') {
       if let Some('_') = self.source.next() {
-        return Err(self.create_syntax_error(
-          self.source.position(),
+        return Err(SyntaxError::from_index(
+          self,
+          0,
           SyntaxErrorTemplate::UnexpectedToken,
         ));
       }
@@ -625,8 +597,9 @@ impl<'i, 's> Lexer<'i, 's> {
     {
       self.source.forward();
       if let Some('_') = self.source.current() {
-        return Err(self.create_syntax_error(
-          self.source.position(),
+        return Err(SyntaxError::from_index(
+          self,
+          0,
           SyntaxErrorTemplate::UnexpectedToken,
         ));
       }
@@ -634,8 +607,9 @@ impl<'i, 's> Lexer<'i, 's> {
         self.source.forward();
       }
       if let Some('_') = self.source.current() {
-        return Err(self.create_syntax_error(
-          self.source.position(),
+        return Err(SyntaxError::from_index(
+          self,
+          0,
           SyntaxErrorTemplate::UnexpectedToken,
         ));
       }
@@ -643,8 +617,9 @@ impl<'i, 's> Lexer<'i, 's> {
     }
 
     if matches!(self.source.current(), Some(c) if is_identifier_start(c)) {
-      return Err(self.create_syntax_error(
-        self.source.position(),
+      return Err(SyntaxError::from_index(
+        self,
+        0,
         SyntaxErrorTemplate::UnexpectedToken,
       ));
     }
@@ -653,7 +628,7 @@ impl<'i, 's> Lexer<'i, 's> {
       .source
       .slice(
         if base == 10 { start } else { start + 2 },
-        self.source.position(),
+        self.source.index(),
       )
       .replace('_', "");
     const FORMAT: u128 = lexical::format::JAVASCRIPT_STRING;
@@ -662,7 +637,7 @@ impl<'i, 's> Lexer<'i, 's> {
       &parse_float_options::JAVASCRIPT_STRING,
     )
     .expect("failed to parse string as a js number");
-    Ok(TokenType::NUMBER(num))
+    Ok(TokenType::Number(num))
   }
 
   /// See https://tc39.es/ecma262/#sec-literals-string-literals
@@ -671,8 +646,9 @@ impl<'i, 's> Lexer<'i, 's> {
     loop {
       match self.source.current() {
         None => {
-          return Err(self.create_syntax_error(
-            self.source.position(),
+          return Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::UnterminatedString,
           ))
         }
@@ -682,8 +658,9 @@ impl<'i, 's> Lexer<'i, 's> {
             break;
           }
           if c == '\r' || c == '\n' {
-            return Err(self.create_syntax_error(
-              self.source.position(),
+            return Err(SyntaxError::from_index(
+              self,
+              0,
               SyntaxErrorTemplate::UnterminatedString,
             ));
           }
@@ -691,8 +668,9 @@ impl<'i, 's> Lexer<'i, 's> {
           if c == '\\' {
             match self.source.current() {
               None => {
-                return Err(self.create_syntax_error(
-                  self.source.position(),
+                return Err(SyntaxError::from_index(
+                  self,
+                  0,
                   SyntaxErrorTemplate::UnterminatedString,
                 ))
               }
@@ -711,7 +689,7 @@ impl<'i, 's> Lexer<'i, 's> {
       }
     }
 
-    Ok(TokenType::STRING(buffer))
+    Ok(TokenType::String(buffer))
   }
 
   /// See https://tc39.es/ecma262/#sec-names-and-keywords
@@ -728,16 +706,18 @@ impl<'i, 's> Lexer<'i, 's> {
           had_escaped = true;
         }
         if matches!(self.source.next(), Some(c) if c != 'u') {
-          return Err(self.create_syntax_error(
-            self.source.position(),
+          return Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::InvalidUnicodeEscape,
           ));
         }
         self.source.forward();
         let raw = char::from_u32(self.scan_code_point()?).unwrap();
         if !check(c) {
-          return Err(self.create_syntax_error(
-            self.source.position(),
+          return Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::InvalidUnicodeEscape,
           ));
         }
@@ -759,9 +739,9 @@ impl<'i, 's> Lexer<'i, 's> {
       _ => {
         self.had_escaped = had_escaped;
         if is_private {
-          Ok(TokenType::PRIVATE_IDENTIFIER(buffer))
+          Ok(TokenType::PrivateIdentifier(buffer))
         } else {
-          Ok(TokenType::IDENTIFIER(buffer))
+          Ok(TokenType::Identifier(buffer))
         }
       }
     }
@@ -772,19 +752,21 @@ impl<'i, 's> Lexer<'i, 's> {
       match self.source.index_of('}') {
         Some(end) => {
           self.source.forward();
-          let code = self.scan_hex(end - self.source.position())?;
+          let code = self.scan_hex(end - self.source.index())?;
           self.source.forward();
           if code > 0x10FFFF {
-            Err(self.create_syntax_error(
-              self.source.position(),
+            Err(SyntaxError::from_index(
+              self,
+              0,
               SyntaxErrorTemplate::InvalidCodePoint,
             ))
           } else {
             Ok(code)
           }
         }
-        None => Err(self.create_syntax_error(
-          self.source.position(),
+        None => Err(SyntaxError::from_index(
+          self,
+          0,
           SyntaxErrorTemplate::InvalidUnicodeEscape,
         )),
       }
@@ -795,8 +777,9 @@ impl<'i, 's> Lexer<'i, 's> {
 
   fn scan_hex(&mut self, len: usize) -> Result<u32, SyntaxError> {
     if len == 0 {
-      return Err(self.create_syntax_error(
-        self.source.position(),
+      return Err(SyntaxError::from_index(
+        self,
+        0,
         SyntaxErrorTemplate::InvalidCodePoint,
       ));
     }
@@ -808,8 +791,9 @@ impl<'i, 's> Lexer<'i, 's> {
           n = (n << 4) | c.to_digit(16).unwrap();
         }
         _ => {
-          return Err(self.create_syntax_error(
-            self.source.position(),
+          return Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::UnexpectedToken,
           ))
         }
@@ -859,9 +843,10 @@ impl<'i, 's> Lexer<'i, 's> {
         {
           self.source.forward();
           Ok('\u{0000}')
-        } else if self.strict.is_strict_mode() && is_decimal_digit(c) {
-          Err(self.create_syntax_error(
-            self.source.position(),
+        } else if self.is_strict() && is_decimal_digit(c) {
+          Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::IllegalOctalEscape,
           ))
         } else {
@@ -873,7 +858,7 @@ impl<'i, 's> Lexer<'i, 's> {
   }
 
   fn skip_hashbang_comment(&mut self) {
-    if self.source.position() == 0
+    if self.source.index() == 0
       && matches!(self.source.current(), Some('#'))
       && matches!(self.source.peek(), Some('!'))
     {
@@ -916,7 +901,7 @@ impl<'i, 's> Lexer<'i, 's> {
       self.source.forward();
     }
     self.line += 1;
-    self.column_offset = self.source.position();
+    self.column_offset = self.source.index();
     self.line_terminator_before_next_token = true;
   }
 
@@ -934,7 +919,6 @@ impl<'i, 's> Lexer<'i, 's> {
   }
 
   fn skip_block_comment(&mut self) -> Result<(), SyntaxError> {
-    let position = self.source.position();
     self.source.forward();
     self.source.forward();
     while let Some(c) = self.source.current() {
@@ -952,71 +936,15 @@ impl<'i, 's> Lexer<'i, 's> {
           }
         }
         None => {
-          return Err(self.create_syntax_error(
-            position,
+          return Err(SyntaxError::from_index(
+            self,
+            0,
             SyntaxErrorTemplate::UnterminatedComment,
           ))
         }
       }
     }
     Ok(())
-  }
-
-  fn create_syntax_error(
-    &self,
-    position: usize,
-    template: SyntaxErrorTemplate,
-  ) -> SyntaxError {
-    let start_index = position;
-    let end_index = position + 1;
-    let line = self.line;
-
-    /*
-     * Source looks like:
-     *
-     *  const a = 1;
-     *  const b 'string string string'; // a string
-     *  const c = 3;                  |            |
-     *  |       |                     |            |
-     *  |       | startIndex          | endIndex   |
-     *  | lineStart                                | lineEnd
-     *
-     * Exception looks like:
-     *
-     *  const b 'string string string'; // a string
-     *          ^^^^^^^^^^^^^^^^^^^^^^
-     *  SyntaxError: unexpected token
-     */
-
-    let mut line_start = start_index;
-    while let Some(c) = self.source.get(line_start) {
-      if !is_line_terminator(c) {
-        line_start -= 1;
-      }
-    }
-
-    let mut line_end = start_index;
-    while let Some(c) = self.source.get(line_end) {
-      if !is_line_terminator(c) {
-        line_end += 1;
-      }
-    }
-
-    let column = start_index - line_start + 1;
-    let message = format!("{}", template);
-    // TODO: specifier
-    let decoration = format!(
-      "\n{}:{}\n{}\n{}{}",
-      line,
-      column,
-      self.source.slice(line_start, line_end),
-      " ".repeat(start_index - line_start),
-      "^".repeat(1.max(end_index - start_index)),
-    );
-    SyntaxError {
-      message,
-      decoration,
-    }
   }
 
   // fn unexpected(&self) -> SyntaxError {
@@ -1057,9 +985,9 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::LBRACE,
-      TokenType::RBRACE,
-      TokenType::EOS,
+      TokenType::LBrace,
+      TokenType::RBrace,
+      TokenType::EndOfSource,
     );
   }
 
@@ -1070,12 +998,12 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::NUMBER(123.0),
-      TokenType::PERIOD,
-      TokenType::IDENTIFIER("toString".to_owned()),
-      TokenType::LPAREN,
-      TokenType::RPAREN,
-      TokenType::EOS,
+      TokenType::Number(123.0),
+      TokenType::Period,
+      TokenType::Identifier("toString".to_owned()),
+      TokenType::LParen,
+      TokenType::RParen,
+      TokenType::EndOfSource,
     );
   }
 
@@ -1086,8 +1014,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::IDENTIFIER("async".to_owned()),
-      TokenType::EOS,
+      TokenType::Identifier("async".to_owned()),
+      TokenType::EndOfSource,
     );
   }
 
@@ -1098,8 +1026,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::IDENTIFIER("aa".to_owned()),
-      TokenType::EOS,
+      TokenType::Identifier("aa".to_owned()),
+      TokenType::EndOfSource,
     );
   }
 
@@ -1110,8 +1038,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::IDENTIFIER("℘℘".to_owned()),
-      TokenType::EOS,
+      TokenType::Identifier("℘℘".to_owned()),
+      TokenType::EndOfSource,
     );
   }
 
@@ -1122,8 +1050,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::IDENTIFIER("$jq".to_owned()),
-      TokenType::EOS,
+      TokenType::Identifier("$jq".to_owned()),
+      TokenType::EndOfSource,
     );
   }
 
@@ -1134,8 +1062,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::ESCAPED_KEYWORD("await".to_owned()),
-      TokenType::EOS,
+      TokenType::EscapedKeyword("await".to_owned()),
+      TokenType::EndOfSource,
     );
   }
 
@@ -1146,8 +1074,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::PRIVATE_IDENTIFIER("aapple".to_owned()),
-      TokenType::EOS,
+      TokenType::PrivateIdentifier("aapple".to_owned()),
+      TokenType::EndOfSource,
     );
   }
 
@@ -1158,8 +1086,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::STRING("\n".to_owned()),
-      TokenType::EOS,
+      TokenType::String("\n".to_owned()),
+      TokenType::EndOfSource,
     );
   }
 
@@ -1170,8 +1098,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::STRING("\\n".to_owned()),
-      TokenType::EOS,
+      TokenType::String("\\n".to_owned()),
+      TokenType::EndOfSource,
     );
   }
 
@@ -1182,8 +1110,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::STRING("a".to_owned()),
-      TokenType::EOS,
+      TokenType::String("a".to_owned()),
+      TokenType::EndOfSource,
     );
   }
 
@@ -1194,8 +1122,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::STRING("4".to_owned()),
-      TokenType::EOS,
+      TokenType::String("4".to_owned()),
+      TokenType::EndOfSource,
     );
   }
 
@@ -1206,8 +1134,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::STRING("ng262".to_owned()),
-      TokenType::EOS,
+      TokenType::String("ng262".to_owned()),
+      TokenType::EndOfSource,
     );
   }
 
@@ -1216,7 +1144,7 @@ block comment
     let source = r#"123.0"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    assert_token_type!(lexer, TokenType::NUMBER(123.0), TokenType::EOS);
+    assert_token_type!(lexer, TokenType::Number(123.0), TokenType::EndOfSource);
   }
 
   #[test]
@@ -1226,8 +1154,8 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_token_type!(
       lexer,
-      TokenType::BIGINT(BigInt::parse_bytes(b"9007199254740993", 10).unwrap()),
-      TokenType::EOS
+      TokenType::BigInt(BigInt::parse_bytes(b"9007199254740993", 10).unwrap()),
+      TokenType::EndOfSource
     );
   }
 
@@ -1236,7 +1164,7 @@ block comment
     let source = r#"1e2"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    assert_token_type!(lexer, TokenType::NUMBER(100.0), TokenType::EOS);
+    assert_token_type!(lexer, TokenType::Number(100.0), TokenType::EndOfSource);
   }
 
   #[test]
@@ -1244,7 +1172,7 @@ block comment
     let source = r#"1e-2"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    assert_token_type!(lexer, TokenType::NUMBER(0.01), TokenType::EOS);
+    assert_token_type!(lexer, TokenType::Number(0.01), TokenType::EndOfSource);
   }
 
   #[test]
@@ -1252,7 +1180,7 @@ block comment
     let source = r#"0x000000000"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    assert_token_type!(lexer, TokenType::NUMBER(0.0), TokenType::EOS);
+    assert_token_type!(lexer, TokenType::Number(0.0), TokenType::EndOfSource);
   }
 
   #[test]
@@ -1260,7 +1188,7 @@ block comment
     let source = r#"1.123"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    assert_token_type!(lexer, TokenType::NUMBER(1.123), TokenType::EOS);
+    assert_token_type!(lexer, TokenType::Number(1.123), TokenType::EndOfSource);
   }
 
   #[test]
@@ -1268,7 +1196,11 @@ block comment
     let source = r#"123_456_789"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    assert_token_type!(lexer, TokenType::NUMBER(123_456_789.0), TokenType::EOS);
+    assert_token_type!(
+      lexer,
+      TokenType::Number(123_456_789.0),
+      TokenType::EndOfSource
+    );
   }
 
   #[test]
@@ -1279,21 +1211,21 @@ block comment
     lexer.forward().unwrap();
     assert_eq!(
       lexer.current().token_type,
-      TokenType::IDENTIFIER("let".to_owned())
+      TokenType::Identifier("let".to_owned())
     );
     lexer.forward().unwrap();
     assert_eq!(
       lexer.current().token_type,
-      TokenType::IDENTIFIER("ng".to_owned())
+      TokenType::Identifier("ng".to_owned())
     );
     lexer.forward().unwrap();
-    assert_eq!(lexer.current().token_type, TokenType::ASSIGN);
+    assert_eq!(lexer.current().token_type, TokenType::Assign);
     lexer.forward().unwrap();
-    assert_eq!(lexer.current().token_type, TokenType::NUMBER(262.0));
+    assert_eq!(lexer.current().token_type, TokenType::Number(262.0));
     lexer.forward().unwrap();
-    assert_eq!(lexer.current().token_type, TokenType::SEMICOLON);
+    assert_eq!(lexer.current().token_type, TokenType::Semicolon);
     lexer.forward().unwrap();
-    assert_eq!(lexer.current().token_type, TokenType::EOS);
+    assert_eq!(lexer.current().token_type, TokenType::EndOfSource);
   }
 
   #[test]
@@ -1303,11 +1235,11 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert_eq!(
       lexer.peek().unwrap().token_type,
-      TokenType::IDENTIFIER("let".to_owned())
+      TokenType::Identifier("let".to_owned())
     );
     assert_eq!(
       lexer.peek_ahead().unwrap().token_type,
-      TokenType::IDENTIFIER("ng".to_owned())
+      TokenType::Identifier("ng".to_owned())
     );
   }
 
@@ -1316,9 +1248,12 @@ block comment
     let source = r#";"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    assert_eq!(lexer.next().unwrap().token_type, TokenType::SEMICOLON);
-    assert_eq!(lexer.peek().unwrap().token_type, TokenType::EOS);
-    assert_eq!(lexer.peek_ahead().unwrap().token_type, TokenType::EOS);
+    assert_eq!(lexer.next().unwrap().token_type, TokenType::Semicolon);
+    assert_eq!(lexer.peek().unwrap().token_type, TokenType::EndOfSource);
+    assert_eq!(
+      lexer.peek_ahead().unwrap().token_type,
+      TokenType::EndOfSource
+    );
   }
 
   #[test]
@@ -1327,7 +1262,7 @@ block comment
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
     let peek = lexer.peek().unwrap();
-    assert!(lexer.matches(TokenType::SEMICOLON, peek));
+    assert!(Lexer::matches(TokenType::Semicolon, peek));
   }
 
   #[test]
@@ -1336,7 +1271,8 @@ block comment
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
     let peek = lexer.peek().unwrap();
-    assert!(lexer.matches_identifier("let", peek));
+    dbg!(peek);
+    assert!(Lexer::matches_identifier("let", peek));
   }
 
   #[test]
@@ -1344,8 +1280,8 @@ block comment
     let source = r#";;"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    assert!(lexer.test(TokenType::SEMICOLON).unwrap());
-    assert!(lexer.test_ahead(TokenType::SEMICOLON).unwrap());
+    assert!(lexer.test(TokenType::Semicolon).unwrap());
+    assert!(lexer.test_ahead(TokenType::Semicolon).unwrap());
   }
 
   #[test]
@@ -1362,9 +1298,9 @@ block comment
     let source = r#";"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    assert!(lexer.eat(TokenType::SEMICOLON).unwrap());
-    assert!(lexer.matches(TokenType::SEMICOLON, lexer.current()));
-    assert!(lexer.eat(TokenType::EOS).unwrap());
+    assert!(lexer.eat(TokenType::Semicolon).unwrap());
+    assert!(Lexer::matches(TokenType::Semicolon, lexer.current()));
+    assert!(lexer.eat(TokenType::EndOfSource).unwrap());
   }
 
   #[test]
@@ -1373,10 +1309,11 @@ block comment
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
     assert!(lexer.eat_identifier("async").unwrap());
-    assert!(
-      lexer.matches(TokenType::IDENTIFIER("async".to_owned()), lexer.current())
-    );
-    assert!(lexer.test(TokenType::EOS).unwrap());
+    assert!(Lexer::matches(
+      TokenType::Identifier("async".to_owned()),
+      lexer.current()
+    ));
+    assert!(lexer.test(TokenType::EndOfSource).unwrap());
   }
 
   #[test]
@@ -1384,9 +1321,9 @@ block comment
     let source = r#";"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    assert!(lexer.expect(TokenType::SEMICOLON).is_ok());
-    assert!(lexer.expect(TokenType::SEMICOLON).is_err());
-    assert!(lexer.expect(TokenType::EOS).is_ok());
+    assert!(lexer.expect(TokenType::Semicolon).is_ok());
+    assert!(lexer.expect(TokenType::Semicolon).is_err());
+    assert!(lexer.expect(TokenType::EndOfSource).is_ok());
   }
 
   #[test]
@@ -1396,6 +1333,27 @@ block comment
     let mut lexer = Lexer::new(source, strict);
     assert!(lexer.expect_identifier("async").is_ok());
     assert!(lexer.expect_identifier("async").is_err());
-    assert!(lexer.expect(TokenType::EOS).is_ok());
+    assert!(lexer.expect(TokenType::EndOfSource).is_ok());
+  }
+
+  #[test]
+  fn lexer_next() {
+    let source = r#"async;"#;
+    let strict = &mut Strict::new(false);
+    let mut lexer = Lexer::new(source, strict);
+    let peek = lexer.peek().unwrap();
+    assert!(Lexer::matches(
+      TokenType::Identifier("async".to_owned()),
+      peek
+    ));
+    let next = lexer.next().unwrap();
+    assert!(Lexer::matches(
+      TokenType::Identifier("async".to_owned()),
+      next
+    ));
+    let next = lexer.next().unwrap();
+    assert!(Lexer::matches(TokenType::Semicolon, next));
+    let next = lexer.next().unwrap();
+    assert!(Lexer::matches(TokenType::EndOfSource, next));
   }
 }

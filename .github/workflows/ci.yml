@@ -105,3 +105,9 @@ jobs:
         with:
           command: test
           args: --all --release --locked
+      - name: Run cargo-tarpaulin
+        uses: actions-rs/tarpaulin@v0.1
+        if: matrix.od == 'ubuntu-latest'
+      - name: Upload to codecov.io
+        if: matrix.od == 'ubuntu-latest'
+        uses: codecov/codecov-action@v2.1.0
