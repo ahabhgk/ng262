@@ -1208,23 +1208,23 @@ block comment
     let source = r#"let ng = 262;"#;
     let strict = &mut Strict::new(false);
     let mut lexer = Lexer::new(source, strict);
-    lexer.forward();
+    lexer.forward().unwrap();
     assert_eq!(
       lexer.current().token_type,
       TokenType::Identifier("let".to_owned())
     );
-    lexer.forward();
+    lexer.forward().unwrap();
     assert_eq!(
       lexer.current().token_type,
       TokenType::Identifier("ng".to_owned())
     );
-    lexer.forward();
+    lexer.forward().unwrap();
     assert_eq!(lexer.current().token_type, TokenType::Assign);
-    lexer.forward();
+    lexer.forward().unwrap();
     assert_eq!(lexer.current().token_type, TokenType::Number(262.0));
-    lexer.forward();
+    lexer.forward().unwrap();
     assert_eq!(lexer.current().token_type, TokenType::Semicolon);
-    lexer.forward();
+    lexer.forward().unwrap();
     assert_eq!(lexer.current().token_type, TokenType::EndOfSource);
   }
 
