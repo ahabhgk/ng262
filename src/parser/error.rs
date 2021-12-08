@@ -2,6 +2,52 @@ use std::{error::Error, fmt};
 
 use super::{lexer::is_line_terminator, tokens::Token};
 
+#[derive(Debug)]
+pub enum ParseError {
+  SyntaxError(SyntaxError),
+  EarlyError(EarlyError),
+}
+
+impl Error for ParseError {}
+
+impl fmt::Display for ParseError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      ParseError::SyntaxError(e) => e.fmt(f),
+      ParseError::EarlyError(e) => e.fmt(f),
+    }
+  }
+}
+
+impl From<SyntaxError> for ParseError {
+  fn from(e: SyntaxError) -> Self {
+    Self::SyntaxError(e)
+  }
+}
+
+impl From<EarlyError> for ParseError {
+  fn from(e: EarlyError) -> Self {
+    Self::EarlyError(e)
+  }
+}
+
+#[derive(Debug)]
+pub struct EarlyError(SyntaxError);
+
+impl Error for EarlyError {}
+
+impl fmt::Display for EarlyError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    self.0.fmt(f)
+  }
+}
+
+impl From<SyntaxError> for EarlyError {
+  fn from(e: SyntaxError) -> Self {
+    Self(e)
+  }
+}
+
 /// SyntaxError
 ///
 /// Source looks like:
@@ -167,6 +213,8 @@ pub enum SyntaxErrorTemplate {
   InvalidCodePoint,
   UnterminatedString,
   IllegalOctalEscape,
+  UnexpectedReservedWordStrict,
+  UnexpectedEvalOrArguments,
 }
 
 impl fmt::Display for SyntaxErrorTemplate {
@@ -180,6 +228,12 @@ impl fmt::Display for SyntaxErrorTemplate {
         write!(f, "Missing \' or \" after string literal")
       }
       Self::IllegalOctalEscape => write!(f, "Illegal octal escape"),
+      Self::UnexpectedReservedWordStrict => {
+        write!(f, "Unexpected reserved word in strict mode")
+      }
+      Self::UnexpectedEvalOrArguments => {
+        write!(f, "`arguments` and `eval` are not valid in this context")
+      }
     }
   }
 }

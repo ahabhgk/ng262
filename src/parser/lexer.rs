@@ -5,7 +5,6 @@ use unicode_xid::UnicodeXID;
 use super::{
   error::{SyntaxError, SyntaxErrorInfo, SyntaxErrorTemplate},
   source::{Source, SourceText},
-  strict::{Strict, UseStrict},
   tokens::{lookup_keyword, Token, TokenType},
 };
 
@@ -66,32 +65,21 @@ fn is_trail_surrogate(cp: char) -> bool {
     && cp <= unsafe { char::from_u32_unchecked(0xDFFF) }
 }
 
-pub struct Lexer<'strict> {
+pub struct Lexer {
   source: Source,
   // start
   line: usize,
   column_offset: usize,
   line_terminator_before_next_token: bool,
   had_escaped: bool,
-  // TODO: use derive marco
-  strict: &'strict mut Strict,
+  is_strict: bool,
   // iter
   current_token: Option<Token>,
   peek_token: Option<Token>,
   peek_ahead_token: Option<Token>,
 }
 
-impl UseStrict for Lexer<'_> {
-  fn is_strict(&self) -> bool {
-    self.strict.is_strict()
-  }
-
-  fn use_strict(&mut self, is_strict: bool) {
-    self.strict.use_strict(is_strict);
-  }
-}
-
-impl SyntaxErrorInfo for Lexer<'_> {
+impl SyntaxErrorInfo for Lexer {
   fn index(&self) -> usize {
     self.source.index()
   }
@@ -109,15 +97,15 @@ impl SyntaxErrorInfo for Lexer<'_> {
   }
 }
 
-impl<'strict> Lexer<'strict> {
-  pub fn new(s: &'static str, strict: &'strict mut Strict) -> Self {
+impl Lexer {
+  pub fn new(s: &'static str, is_strict: bool) -> Self {
     Self {
       source: Source::new(s),
       line: 1,
       column_offset: 0,
       line_terminator_before_next_token: false,
       had_escaped: false,
-      strict,
+      is_strict,
       current_token: None,
       peek_token: None,
       peek_ahead_token: None,
@@ -843,7 +831,7 @@ impl<'strict> Lexer<'strict> {
         {
           self.source.forward();
           Ok('\u{0000}')
-        } else if self.is_strict() && is_decimal_digit(c) {
+        } else if self.is_strict && is_decimal_digit(c) {
           Err(SyntaxError::from_index(
             self,
             0,
@@ -981,8 +969,7 @@ block comment
 // line comment
 }
 "#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::LBrace,
@@ -994,8 +981,7 @@ block comment
   #[test]
   fn number_dot_dot() {
     let source = "123..toString()";
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::Number(123.0),
@@ -1010,8 +996,7 @@ block comment
   #[test]
   fn identifier_async() {
     let source = r#"async"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::Identifier("async".to_owned()),
@@ -1022,8 +1007,7 @@ block comment
   #[test]
   fn identifier_escape_unicode() {
     let source = r#"a\u0061"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::Identifier("aa".to_owned()),
@@ -1034,8 +1018,7 @@ block comment
   #[test]
   fn identifier_escape_unicode_2() {
     let source = r#"℘\u2118"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::Identifier("℘℘".to_owned()),
@@ -1046,8 +1029,7 @@ block comment
   #[test]
   fn identifier_dollar() {
     let source = r#"$jq"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::Identifier("$jq".to_owned()),
@@ -1058,8 +1040,7 @@ block comment
   #[test]
   fn keyword_escape() {
     let source = r#"\u{61}wait"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::EscapedKeyword("await".to_owned()),
@@ -1070,8 +1051,7 @@ block comment
   #[test]
   fn private_identifier_escape() {
     let source = r#"#a\u{61}pple"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::PrivateIdentifier("aapple".to_owned()),
@@ -1082,8 +1062,7 @@ block comment
   #[test]
   fn string_escape() {
     let source = r#"'\n'"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::String("\n".to_owned()),
@@ -1094,8 +1073,7 @@ block comment
   #[test]
   fn string_escape_2() {
     let source = r#"'\\n'"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::String("\\n".to_owned()),
@@ -1106,8 +1084,7 @@ block comment
   #[test]
   fn string_escape_hex() {
     let source = r#"'\x61'"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::String("a".to_owned()),
@@ -1118,8 +1095,7 @@ block comment
   #[test]
   fn string_escape_long_unicode() {
     let source = r#"'\u{00000000034}'"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::String("4".to_owned()),
@@ -1130,8 +1106,7 @@ block comment
   #[test]
   fn string_literal() {
     let source = r#"'ng262'"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::String("ng262".to_owned()),
@@ -1142,16 +1117,14 @@ block comment
   #[test]
   fn number_literal() {
     let source = r#"123.0"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(lexer, TokenType::Number(123.0), TokenType::EndOfSource);
   }
 
   #[test]
   fn big_int_literal() {
     let source = r#"9007199254740993n"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::BigInt(BigInt::parse_bytes(b"9007199254740993", 10).unwrap()),
@@ -1162,40 +1135,35 @@ block comment
   #[test]
   fn number_exponent() {
     let source = r#"1e2"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(lexer, TokenType::Number(100.0), TokenType::EndOfSource);
   }
 
   #[test]
   fn number_signed_exponent() {
     let source = r#"1e-2"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(lexer, TokenType::Number(0.01), TokenType::EndOfSource);
   }
 
   #[test]
   fn number_hex() {
     let source = r#"0x000000000"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(lexer, TokenType::Number(0.0), TokenType::EndOfSource);
   }
 
   #[test]
   fn number_point() {
     let source = r#"1.123"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(lexer, TokenType::Number(1.123), TokenType::EndOfSource);
   }
 
   #[test]
   fn number_separator() {
     let source = r#"123_456_789"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_token_type!(
       lexer,
       TokenType::Number(123_456_789.0),
@@ -1206,8 +1174,7 @@ block comment
   #[test]
   fn lexer_forward() {
     let source = r#"let ng = 262;"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     lexer.forward().unwrap();
     assert_eq!(
       lexer.current().token_type,
@@ -1231,8 +1198,7 @@ block comment
   #[test]
   fn lexer_peek_at_start() {
     let source = r#"let ng = 262;"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_eq!(
       lexer.peek().unwrap().token_type,
       TokenType::Identifier("let".to_owned())
@@ -1246,8 +1212,7 @@ block comment
   #[test]
   fn lexer_peek_at_end() {
     let source = r#";"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert_eq!(lexer.next().unwrap().token_type, TokenType::Semicolon);
     assert_eq!(lexer.peek().unwrap().token_type, TokenType::EndOfSource);
     assert_eq!(
@@ -1259,8 +1224,7 @@ block comment
   #[test]
   fn lexer_matches() {
     let source = r#";"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     let peek = lexer.peek().unwrap();
     assert!(Lexer::matches(TokenType::Semicolon, peek));
   }
@@ -1268,8 +1232,7 @@ block comment
   #[test]
   fn lexer_matches_identifier() {
     let source = r#"let"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     let peek = lexer.peek().unwrap();
     dbg!(peek);
     assert!(Lexer::matches_identifier("let", peek));
@@ -1278,8 +1241,7 @@ block comment
   #[test]
   fn lexer_test() {
     let source = r#";;"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert!(lexer.test(TokenType::Semicolon).unwrap());
     assert!(lexer.test_ahead(TokenType::Semicolon).unwrap());
   }
@@ -1287,8 +1249,7 @@ block comment
   #[test]
   fn lexer_test_identifier() {
     let source = r#"async async"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert!(lexer.test_identifier("async").unwrap());
     assert!(lexer.test_ahead_identifier("async").unwrap());
   }
@@ -1296,8 +1257,7 @@ block comment
   #[test]
   fn lexer_eat() {
     let source = r#";"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert!(lexer.eat(TokenType::Semicolon).unwrap());
     assert!(Lexer::matches(TokenType::Semicolon, lexer.current()));
     assert!(lexer.eat(TokenType::EndOfSource).unwrap());
@@ -1306,8 +1266,7 @@ block comment
   #[test]
   fn lexer_eat_identifier() {
     let source = r#"async"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert!(lexer.eat_identifier("async").unwrap());
     assert!(Lexer::matches(
       TokenType::Identifier("async".to_owned()),
@@ -1319,8 +1278,7 @@ block comment
   #[test]
   fn lexer_expect() {
     let source = r#";"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert!(lexer.expect(TokenType::Semicolon).is_ok());
     assert!(lexer.expect(TokenType::Semicolon).is_err());
     assert!(lexer.expect(TokenType::EndOfSource).is_ok());
@@ -1329,8 +1287,7 @@ block comment
   #[test]
   fn lexer_expect_identifier() {
     let source = r#"async"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     assert!(lexer.expect_identifier("async").is_ok());
     assert!(lexer.expect_identifier("async").is_err());
     assert!(lexer.expect(TokenType::EndOfSource).is_ok());
@@ -1339,8 +1296,7 @@ block comment
   #[test]
   fn lexer_next() {
     let source = r#"async;"#;
-    let strict = &mut Strict::new(false);
-    let mut lexer = Lexer::new(source, strict);
+    let mut lexer = Lexer::new(source, false);
     let peek = lexer.peek().unwrap();
     assert!(Lexer::matches(
       TokenType::Identifier("async".to_owned()),

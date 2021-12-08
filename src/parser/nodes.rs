@@ -8,6 +8,7 @@ pub struct Location {
 
 pub enum NodeType {
   IdentifierName { name: String },
+  BindingIdentifier { name: String },
 }
 
 pub struct Node {
