@@ -4,45 +4,39 @@ use self::{
   error::{SyntaxError, SyntaxErrorInfo},
   lexer::Lexer,
   nodes::{Location, Node, NodeBuilder, NodeType},
-  scope::Scope,
-  strict::{Strict, UseStrict},
+  resolver::Resolver,
+  strict::IsStrict,
 };
 
-mod error;
-mod identifier;
-mod lexer;
-mod nodes;
-mod scope;
-mod source;
-mod strict;
-mod tokens;
+pub mod error;
+pub mod identifier;
+pub mod lexer;
+pub mod nodes;
+pub mod resolver;
+pub mod source;
+pub mod strict;
+pub mod tokens;
 
 struct State {
   has_top_level_await: bool,
   json: bool,
 }
 
-pub struct Parser<'strict> {
-  lexer: Lexer<'strict>,
+pub struct Parser {
+  lexer: Lexer,
+  resolver: Resolver,
   specifier: Option<String>,
   early_errors: HashSet<SyntaxError>,
   state: State,
-  scope: Scope,
-  // TODO: use derive marco
-  strict: &'strict mut Strict,
 }
 
-impl UseStrict for Parser<'_> {
+impl IsStrict for Parser {
   fn is_strict(&self) -> bool {
-    self.strict.is_strict()
-  }
-
-  fn use_strict(&mut self, is_strict: bool) {
-    self.strict.use_strict(is_strict);
+    self.resolver.is_strict()
   }
 }
 
-impl SyntaxErrorInfo for Parser<'_> {
+impl SyntaxErrorInfo for Parser {
   fn line(&self) -> usize {
     self.lexer.line()
   }
@@ -60,7 +54,7 @@ impl SyntaxErrorInfo for Parser<'_> {
   }
 }
 
-impl Parser<'_> {
+impl Parser {
   fn start(&mut self) -> Result<NodeBuilder, SyntaxError> {
     let peek = self.lexer.peek()?;
     let location = Location {

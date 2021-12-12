@@ -34,7 +34,7 @@ impl Source {
     self.index -= 1;
   }
 
-  pub fn next(&mut self) -> Option<char> {
+  pub fn bump(&mut self) -> Option<char> {
     self.forward();
     self.current()
   }
