@@ -9,6 +9,9 @@ pub struct Location {
 pub enum NodeType {
   IdentifierName { name: String },
   BindingIdentifier { name: String },
+  IdentifierReference { name: String, had_escaped: bool },
+  LabelIdentifier { name: String, had_escaped: bool },
+  PrivateIdentifier { name: String },
 }
 
 pub struct Node {

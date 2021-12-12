@@ -8,14 +8,14 @@ use self::{
   strict::IsStrict,
 };
 
-mod error;
-mod identifier;
-mod lexer;
-mod nodes;
-mod resolver;
-mod source;
-mod strict;
-mod tokens;
+pub mod error;
+pub mod identifier;
+pub mod lexer;
+pub mod nodes;
+pub mod resolver;
+pub mod source;
+pub mod strict;
+pub mod tokens;
 
 struct State {
   has_top_level_await: bool,
