@@ -130,7 +130,7 @@ impl Lexer {
       .expect("current() should not call before forward()")
   }
 
-  pub fn next(&mut self) -> Result<&Token, SyntaxError> {
+  pub fn bump(&mut self) -> Result<&Token, SyntaxError> {
     self.forward()?;
     Ok(self.current())
   }
@@ -195,7 +195,7 @@ impl Lexer {
             Some(TokenType::from_single(c))
           }
           // ? ?. ?? ??=
-          '?' => match self.source.next() {
+          '?' => match self.source.bump() {
             Some('.') => {
               if matches!(self.source.peek(), Some(c) if !is_decimal_digit(c)) {
                 self.source.forward();
@@ -204,7 +204,7 @@ impl Lexer {
                 None
               }
             }
-            Some('?') => match self.source.next() {
+            Some('?') => match self.source.bump() {
               Some('=') => {
                 self.source.forward();
                 Some(TokenType::AssignNullish)
@@ -214,12 +214,12 @@ impl Lexer {
             _ => Some(TokenType::Conditional),
           },
           // < <= << <<=
-          '<' => match self.source.next() {
+          '<' => match self.source.bump() {
             Some('=') => {
               self.source.forward();
               Some(TokenType::LessThanEqual)
             }
-            Some('<') => match self.source.next() {
+            Some('<') => match self.source.bump() {
               Some('=') => {
                 self.source.forward();
                 Some(TokenType::AssignShl)
@@ -229,13 +229,13 @@ impl Lexer {
             _ => Some(TokenType::LessThan),
           },
           // > >= >> >>= >>> >>>=
-          '>' => match self.source.next() {
+          '>' => match self.source.bump() {
             Some('=') => {
               self.source.forward();
               Some(TokenType::GreaterThanEqual)
             }
-            Some('>') => match self.source.next() {
-              Some('>') => match self.source.next() {
+            Some('>') => match self.source.bump() {
+              Some('>') => match self.source.bump() {
                 Some('=') => {
                   self.source.forward();
                   Some(TokenType::AssignShr)
@@ -251,8 +251,8 @@ impl Lexer {
             _ => Some(TokenType::GreaterThan),
           },
           // = == === =>
-          '=' => match self.source.next() {
-            Some('=') => match self.source.next() {
+          '=' => match self.source.bump() {
+            Some('=') => match self.source.bump() {
               Some('=') => {
                 self.source.forward();
                 Some(TokenType::StrictEqual)
@@ -266,8 +266,8 @@ impl Lexer {
             _ => Some(TokenType::Assign),
           },
           // ! != !==
-          '!' => match self.source.next() {
-            Some('=') => match self.source.next() {
+          '!' => match self.source.bump() {
+            Some('=') => match self.source.bump() {
               Some('=') => {
                 self.source.forward();
                 Some(TokenType::StrictNotEqual)
@@ -277,7 +277,7 @@ impl Lexer {
             _ => Some(TokenType::Not),
           },
           // + ++ +=
-          '+' => match self.source.next() {
+          '+' => match self.source.bump() {
             Some('+') => {
               self.source.forward();
               Some(TokenType::Inc)
@@ -289,7 +289,7 @@ impl Lexer {
             _ => Some(TokenType::Add),
           },
           // - -- -=
-          '-' => match self.source.next() {
+          '-' => match self.source.bump() {
             Some('-') => {
               self.source.forward();
               Some(TokenType::Dec)
@@ -301,12 +301,12 @@ impl Lexer {
             _ => Some(TokenType::Sub),
           },
           // * *= ** **=
-          '*' => match self.source.next() {
+          '*' => match self.source.bump() {
             Some('=') => {
               self.source.forward();
               Some(TokenType::AssignMul)
             }
-            Some('*') => match self.source.next() {
+            Some('*') => match self.source.bump() {
               Some('=') => {
                 self.source.forward();
                 Some(TokenType::AssignExp)
@@ -316,7 +316,7 @@ impl Lexer {
             _ => Some(TokenType::Mul),
           },
           // % %=
-          '%' => match self.source.next() {
+          '%' => match self.source.bump() {
             Some('=') => {
               self.source.forward();
               Some(TokenType::AssignMod)
@@ -324,7 +324,7 @@ impl Lexer {
             _ => Some(TokenType::Mod),
           },
           // / /=
-          '/' => match self.source.next() {
+          '/' => match self.source.bump() {
             Some('=') => {
               self.source.forward();
               Some(TokenType::AssignDiv)
@@ -332,8 +332,8 @@ impl Lexer {
             _ => Some(TokenType::Div),
           },
           // & && &= &&=
-          '&' => match self.source.next() {
-            Some('&') => match self.source.next() {
+          '&' => match self.source.bump() {
+            Some('&') => match self.source.bump() {
               Some('=') => {
                 self.source.forward();
                 Some(TokenType::AssignAnd)
@@ -344,8 +344,8 @@ impl Lexer {
             _ => Some(TokenType::BitAnd),
           },
           // | || |= ||=
-          '|' => match self.source.next() {
-            Some('|') => match self.source.next() {
+          '|' => match self.source.bump() {
+            Some('|') => match self.source.bump() {
               Some('=') => {
                 self.source.forward();
                 Some(TokenType::AssignOr)
@@ -359,7 +359,7 @@ impl Lexer {
             _ => Some(TokenType::BitOr),
           },
           // ^ ^=
-          '^' => match self.source.next() {
+          '^' => match self.source.bump() {
             Some('=') => {
               self.source.forward();
               Some(TokenType::AssignBitXor)
@@ -367,9 +367,9 @@ impl Lexer {
             _ => Some(TokenType::BitXor),
           },
           // . ... NUMBER
-          '.' => match self.source.next() {
+          '.' => match self.source.bump() {
             Some('.') => {
-              if let Some('.') = self.source.next() {
+              if let Some('.') = self.source.bump() {
                 self.source.forward();
                 Some(TokenType::Ellipsis)
               } else {
@@ -422,7 +422,7 @@ impl Lexer {
     let mut check: fn(char) -> bool = is_decimal_digit;
     // base
     if self.source.current() == Some('0') {
-      match self.source.next() {
+      match self.source.bump() {
         Some('x' | 'X') => base = 16,
         Some('o' | 'O') => base = 8,
         Some('b' | 'B') => base = 2,
@@ -487,7 +487,7 @@ impl Lexer {
     }
     // .
     if base == 10 && self.source.current() == Some('.') {
-      if let Some('_') = self.source.next() {
+      if let Some('_') = self.source.bump() {
         return Err(SyntaxError::from_index(
           self,
           0,
@@ -611,7 +611,7 @@ impl Lexer {
         if !had_escaped {
           had_escaped = true;
         }
-        if matches!(self.source.next(), Some(c) if c != 'u') {
+        if matches!(self.source.bump(), Some(c) if c != 'u') {
           return Err(SyntaxError::from_index(
             self,
             0,
@@ -918,7 +918,7 @@ macro_rules! expect {
     use $crate::parser::error::{SyntaxError, SyntaxErrorTemplate};
     let lexer = $lexer;
     $crate::test!(lexer, $id).and_then(|res| match res {
-      true => lexer.next(),
+      true => lexer.bump(),
       false => match lexer.peek() {
         Ok(peek) => {
           let peek = peek.to_owned();
@@ -936,7 +936,7 @@ macro_rules! expect {
     use $crate::parser::error::{SyntaxError, SyntaxErrorTemplate};
     let lexer = $lexer;
     $crate::test!(lexer, $( $pattern )|+ $( if $guard )?).and_then(|res| match res {
-      true => lexer.next(),
+      true => lexer.bump(),
       false => match lexer.peek() {
         Ok(peek) => {
           let peek = peek.to_owned();
@@ -1222,7 +1222,7 @@ block comment
   fn lexer_peek_at_end() {
     let source = r#";"#;
     let mut lexer = Lexer::new(source, false);
-    assert_eq!(lexer.next().unwrap().token_type, TokenType::Semicolon);
+    assert_eq!(lexer.bump().unwrap().token_type, TokenType::Semicolon);
     assert_eq!(lexer.peek().unwrap().token_type, TokenType::EndOfSource);
     assert_eq!(
       lexer.peek_ahead().unwrap().token_type,
@@ -1304,11 +1304,11 @@ block comment
     let mut lexer = Lexer::new(source, false);
     let peek = lexer.peek().unwrap();
     assert!(matches_token_type!(peek, "async"));
-    let next = lexer.next().unwrap();
+    let next = lexer.bump().unwrap();
     assert!(matches_token_type!(next, "async"));
-    let next = lexer.next().unwrap();
+    let next = lexer.bump().unwrap();
     assert!(matches_token_type!(next, TokenType::Semicolon));
-    let next = lexer.next().unwrap();
+    let next = lexer.bump().unwrap();
     assert!(matches_token_type!(next, TokenType::EndOfSource));
   }
 }

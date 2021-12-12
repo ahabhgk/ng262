@@ -21,7 +21,7 @@ impl Parser {
       TokenType::Identifier(_) | TokenType::EscapedKeyword(_)
     ) || peek.token_type.is_keyword()
     {
-      let name = self.lexer.next()?.token_type.identifier_or_keyword_value();
+      let name = self.lexer.bump()?.token_type.identifier_or_keyword_value();
       Ok(self.finish(node, NodeType::IdentifierName { name }))
     } else {
       let peek = peek.to_owned();
@@ -42,7 +42,7 @@ impl Parser {
   ///   `await`
   fn parse_binding_identifier(&mut self) -> Result<Node, ParseError> {
     let node = self.start()?;
-    let token = self.lexer.next()?.to_owned();
+    let token = self.lexer.bump()?.to_owned();
     let name = match &token.token_type {
       TokenType::Identifier(name) => name.clone(),
       TokenType::EscapedKeyword(name) => name.clone(),
@@ -113,7 +113,7 @@ impl Parser {
   ///   [~Await] `await`
   fn parse_identifier_reference(&mut self) -> Result<Node, ParseError> {
     let node = self.start()?;
-    let token = self.lexer.next()?.to_owned();
+    let token = self.lexer.bump()?.to_owned();
     let had_escaped = token.had_escaped;
     let name = self.get_identifier_reference_name(&token)?;
     Ok(self.finish(node, NodeType::IdentifierReference { name, had_escaped }))
@@ -130,7 +130,7 @@ impl Parser {
           return Err(
             SyntaxError::from_token(
               self,
-              &token,
+              token,
               SyntaxErrorTemplate::UnexpectedToken,
             )
             .into(),
@@ -143,7 +143,7 @@ impl Parser {
           return Err(
             SyntaxError::from_token(
               self,
-              &token,
+              token,
               SyntaxErrorTemplate::UnexpectedToken,
             )
             .into(),
@@ -155,7 +155,7 @@ impl Parser {
         return Err(
           SyntaxError::from_token(
             self,
-            &token,
+            token,
             SyntaxErrorTemplate::UnexpectedToken,
           )
           .into(),
@@ -182,7 +182,7 @@ impl Parser {
       return Err(
         SyntaxError::from_token(
           self,
-          &token,
+          token,
           SyntaxErrorTemplate::UnexpectedReservedWordStrict,
         )
         .into(),
@@ -192,7 +192,7 @@ impl Parser {
       return Err(
         SyntaxError::from_token(
           self,
-          &token,
+          token,
           SyntaxErrorTemplate::UnexpectedToken,
         )
         .into(),
@@ -207,7 +207,7 @@ impl Parser {
   ///   [~Await] `await`
   fn parse_label_identifier(&mut self) -> Result<Node, ParseError> {
     let node = self.start()?;
-    let token = self.lexer.next()?.to_owned();
+    let token = self.lexer.bump()?.to_owned();
     let had_escaped = token.had_escaped;
     let name = self.get_identifier_reference_name(&token)?;
     Ok(self.finish(node, NodeType::LabelIdentifier { name, had_escaped }))
