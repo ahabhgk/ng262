@@ -1,17 +1,35 @@
-use crate::language_types::Value;
+use crate::{
+  helpers::Either,
+  language_types::{
+    boolean::JsBoolean, object::JsObject, undefined::JsUndefined, Value,
+  },
+};
 
 /// https://tc39.es/ecma262/#sec-property-descriptor-specification-type
 pub struct PropertyDescriptor {
   value: Option<Value>,
-  writable: Option<bool>,
-  get: Option<Value>, // enum Get { JsObject, Undefined } ?
-  set: Option<Value>, // enum Set { JsObject, Undefined } ?
-  enumerable: Option<bool>,
-  configurable: Option<bool>,
+  writable: Option<JsBoolean>,
+  get: Option<Either<JsObject, JsUndefined>>,
+  set: Option<Either<JsObject, JsUndefined>>,
+  enumerable: Option<JsBoolean>,
+  configurable: Option<JsBoolean>,
 }
 
+impl Default for PropertyDescriptor {
+  fn default() -> Self {
+    Self {
+      value: Some(Value::Undefined(JsUndefined)),
+      writable: Some(JsBoolean::False),
+      get: Some(Either::B(JsUndefined)),
+      set: Some(Either::B(JsUndefined)),
+      enumerable: Some(JsBoolean::False),
+      configurable: Some(JsBoolean::False),
+    }
+  }
+}
+
+/// https://tc39.es/ecma262/#sec-isaccessordescriptor
 impl PropertyDescriptor {
-  /// https://tc39.es/ecma262/#sec-isaccessordescriptor
   pub fn is_accessor_descriptor(&self) -> bool {
     // 1. If Desc is undefined, return false.
     // 2. If both Desc.[[Get]] and Desc.[[Set]] are absent, return false.

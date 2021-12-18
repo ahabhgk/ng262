@@ -1,3 +1,5 @@
+//! https://tc39.es/ecma262/#sec-type-conversion
+
 use num_traits::Zero;
 
 use crate::language_types::{boolean::JsBoolean, Value};
@@ -6,8 +8,8 @@ impl Value {
   /// https://tc39.es/ecma262/#sec-toboolean
   pub fn to_boolean(&self) -> JsBoolean {
     match self {
-      Value::Undefined => JsBoolean::False,
-      Value::Null => JsBoolean::False,
+      Value::Undefined(_) => JsBoolean::False,
+      Value::Null(_) => JsBoolean::False,
       Value::Symbol(_) => JsBoolean::True,
       Value::Object(_) => JsBoolean::True,
       Value::Boolean(v) => *v,

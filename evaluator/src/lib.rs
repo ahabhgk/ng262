@@ -4,6 +4,8 @@ pub mod parser;
 pub mod runtime_semantics;
 pub mod specification_types;
 pub mod static_semantics;
+pub mod agent;
+pub mod helpers;
 
 #[cfg(test)]
 mod tests {
