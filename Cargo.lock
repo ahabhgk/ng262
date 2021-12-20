@@ -1928,9 +1928,9 @@ dependencies = [
 
 [[package]]
 name = "swc_estree_compat"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "353cc3ba329f0089387af11f2cb92b0dc93007bfbedef21b943c1e12f2ce88d8"
+checksum = "70f9d2928a13856b6e44045aafd05fad2a4b129fec0b2c951c836904d74723bc"
 dependencies = [
  "ahash",
  "anyhow",
