@@ -12,7 +12,7 @@ impl Value {
     match self {
       Self::Object(v) => {
         // 2. If argument has a [[Call]] internal method, return true.
-        if !v.get_call().is_none() {
+        if v.get_call().is_some() {
           return true;
         }
         // 3. Return false.
@@ -24,14 +24,10 @@ impl Value {
 
   /// https://tc39.es/ecma262/#sec-ispropertykey
   pub fn is_property_key(&self) -> bool {
-    match self {
-      // 1. If Type(argument) is String, return true.
-      Self::String(_) => true,
-      // 2. If Type(argument) is Symbol, return true.
-      Self::Symbol(_) => true,
-      // 3. Return false.
-      _ => false,
-    }
+    // 1. If Type(argument) is String, return true.
+    // 2. If Type(argument) is Symbol, return true.
+    // 3. Return false.
+    matches!(self, Self::String(_) | Self::Symbol(_))
   }
 }
 

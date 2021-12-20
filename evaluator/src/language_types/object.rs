@@ -15,12 +15,6 @@ struct Inner {
   extensible: bool,
 }
 
-impl Inner {
-  pub fn call(&self, v: &Value, arguments_list: &[Value]) {
-    let call = self.internal_methods.call;
-  }
-}
-
 /// https://tc39.es/ecma262/#sec-object-type
 #[derive(Clone)]
 pub struct JsObject(Rc<RefCell<Inner>>);
