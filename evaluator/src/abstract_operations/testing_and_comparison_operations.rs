@@ -1,9 +1,6 @@
 //! https://tc39.es/ecma262/#sec-testing-and-comparison-operations
 
-use crate::language_types::{
-  big_int::JsBigInt, boolean::JsBoolean, number::JsNumber, object::JsObject,
-  Value,
-};
+use crate::language_types::{big_int::JsBigInt, number::JsNumber, Value};
 
 impl Value {
   /// https://tc39.es/ecma262/#sec-iscallable
@@ -12,7 +9,7 @@ impl Value {
     match self {
       Self::Object(v) => {
         // 2. If argument has a [[Call]] internal method, return true.
-        if v.get_call().is_some() {
+        if v.call().is_some() {
           return true;
         }
         // 3. Return false.
@@ -32,7 +29,7 @@ impl Value {
 }
 
 /// https://tc39.es/ecma262/#sec-samevalue
-pub fn same_value(x: &Value, y: &Value) -> JsBoolean {
+pub fn same_value(x: &Value, y: &Value) -> bool {
   // 1. If Type(x) is different from Type(y), return false.
   match (x, y) {
     // 2. If Type(x) is Number, then
@@ -45,8 +42,8 @@ pub fn same_value(x: &Value, y: &Value) -> JsBoolean {
     _ if matches!(
       (x, y),
       (Value::Boolean(_), Value::Boolean(_))
-        | (Value::Null(_), Value::Null(_))
-        | (Value::Undefined(_), Value::Undefined(_))
+        | (Value::Null, Value::Null)
+        | (Value::Undefined, Value::Undefined)
         | (Value::String(_), Value::String(_))
         | (Value::Object(_), Value::Object(_))
         | (Value::Symbol(_), Value::Symbol(_))
@@ -54,29 +51,56 @@ pub fn same_value(x: &Value, y: &Value) -> JsBoolean {
     {
       same_value_non_numeric(x, y)
     }
-    _ => JsBoolean::False,
+    _ => false,
+  }
+}
+
+/// https://tc39.es/ecma262/#sec-samevaluezero
+pub fn same_value_zero(x: &Value, y: &Value) -> bool {
+  // 1. If Type(x) is different from Type(y), return false.
+  match (x, y) {
+    // 2. If Type(x) is Number, then
+    //   a. Return ! Number::sameValueZero(x, y).
+    (Value::Number(x), Value::Number(y)) => JsNumber::same_value_zero(x, y),
+    // 3. If Type(x) is BigInt, then
+    //   a. Return ! BigInt::sameValueZero(x, y).
+    (Value::BigInt(x), Value::BigInt(y)) => JsBigInt::same_value_zero(x, y),
+    // 4. Return ! SameValueNonNumeric(x, y).
+    _ if matches!(
+      (x, y),
+      (Value::Boolean(_), Value::Boolean(_))
+        | (Value::Null, Value::Null)
+        | (Value::Undefined, Value::Undefined)
+        | (Value::String(_), Value::String(_))
+        | (Value::Object(_), Value::Object(_))
+        | (Value::Symbol(_), Value::Symbol(_))
+    ) =>
+    {
+      same_value_non_numeric(x, y)
+    }
+    _ => false,
   }
 }
 
 /// https://tc39.es/ecma262/#sec-samevaluenonnumeric
-pub fn same_value_non_numeric(x: &Value, y: &Value) -> JsBoolean {
+pub fn same_value_non_numeric(x: &Value, y: &Value) -> bool {
   // 1. Assert: Type(x) is the same as Type(y).
   match (x, y) {
     // 2. If Type(x) is Undefined, return true.
-    (Value::Undefined(_), Value::Undefined(_)) => JsBoolean::True,
+    (Value::Undefined, Value::Undefined) => true,
     // 3. If Type(x) is Null, return true.
-    (Value::Null(_), Value::Null(_)) => JsBoolean::True,
+    (Value::Null, Value::Null) => true,
     // 4. If Type(x) is String, then
     //   a. If x and y are exactly the same sequence of code units (same length and same code units at corresponding indices), return true; otherwise, return false.
-    (Value::String(x), Value::String(y)) => (x == y).into(),
+    (Value::String(x), Value::String(y)) => x == y,
     // 5. If Type(x) is Boolean, then
     //   a. If x and y are both true or both false, return true; otherwise, return false.
-    (Value::Boolean(x), Value::Boolean(y)) => (x == y).into(),
+    (Value::Boolean(x), Value::Boolean(y)) => x == y,
     // 6. If Type(x) is Symbol, then
     //   a. If x and y are both the same Symbol value, return true; otherwise, return false.
-    (Value::Symbol(x), Value::Symbol(y)) => (x == y).into(),
+    (Value::Symbol(x), Value::Symbol(y)) => x == y,
     // 7. If x and y are the same Object value, return true. Otherwise, return false.
-    (Value::Object(x), Value::Object(y)) => JsObject::equals(x, y).into(),
+    (Value::Object(x), Value::Object(y)) => x == y,
 
     (Value::Number(_), Value::Number(_))
     | (Value::BigInt(_), Value::BigInt(_)) => panic!("expect non numeric type"),

@@ -6,32 +6,32 @@ use crate::language_types::{boolean::JsBoolean, Value};
 
 impl Value {
   /// https://tc39.es/ecma262/#sec-toboolean
-  pub fn to_boolean(&self) -> JsBoolean {
+  pub fn to_boolean(&self) -> bool {
     match self {
-      Value::Undefined(_) => JsBoolean::False,
-      Value::Null(_) => JsBoolean::False,
-      Value::Symbol(_) => JsBoolean::True,
-      Value::Object(_) => JsBoolean::True,
+      Value::Undefined => false,
+      Value::Null => false,
+      Value::Symbol(_) => true,
+      Value::Object(_) => true,
       Value::Boolean(v) => *v,
       Value::String(s) => {
         if s.is_empty() {
-          JsBoolean::False
+          false
         } else {
-          JsBoolean::True
+          true
         }
       }
       Value::Number(n) => {
-        if **n == 0.0 || n.is_nan() {
-          JsBoolean::False
+        if *n == 0.0 || n.is_nan() {
+          false
         } else {
-          JsBoolean::True
+          true
         }
       }
       Value::BigInt(v) => {
         if v.is_zero() {
-          JsBoolean::False
+          false
         } else {
-          JsBoolean::True
+          true
         }
       }
     }

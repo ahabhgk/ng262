@@ -1,9 +1,8 @@
 use std::ops::Deref;
 
-use super::boolean::JsBoolean;
+use super::{boolean::JsBoolean, Value};
 
-/// https://tc39.es/ecma262/#sec-ecmascript-language-types-number-type
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct JsNumber(f64);
 
 impl Deref for JsNumber {
@@ -15,20 +14,40 @@ impl Deref for JsNumber {
 }
 
 impl JsNumber {
+  /// https://tc39.es/ecma262/#sec-numeric-types-number-equal
+  pub fn equal(x: &f64, y: &f64) -> bool {
+    // 1. If x is NaN, return false.
+    // 2. If y is NaN, return false.
+    // 3. If x is the same Number value as y, return true.
+    // 4. If x is +0𝔽 and y is -0𝔽, return true.
+    // 5. If x is -0𝔽 and y is +0𝔽, return true.
+    // 6. Return false.
+    x == y
+  }
+
   /// https://tc39.es/ecma262/#sec-numeric-types-number-sameValue
-  pub fn same_value(x: &Self, y: &Self) -> JsBoolean {
+  pub fn same_value(x: &f64, y: &f64) -> bool {
     // 1. If x is NaN and y is NaN, return true.
     if x.is_nan() && y.is_nan() {
-      return JsBoolean::True;
+      return true;
     }
     // 2. If x is +0𝔽 and y is -0𝔽, return false.
     // 3. If x is -0𝔽 and y is +0𝔽, return false.
     // 4. If x is the same Number value as y, return true.
     // 5. Return false.
-    if **x == **y && x.signum() == y.signum() {
-      JsBoolean::True
-    } else {
-      JsBoolean::False
+    x == y && x.signum() == y.signum()
+  }
+
+  /// https://tc39.es/ecma262/#sec-numeric-types-number-sameValueZero
+  pub fn same_value_zero(x: &f64, y: &f64) -> bool {
+    // 1. If x is NaN and y is NaN, return true.
+    if x.is_nan() && y.is_nan() {
+      return true;
     }
+    // 2. If x is +0𝔽 and y is -0𝔽, return true.
+    // 3. If x is -0𝔽 and y is +0𝔽, return true.
+    // 4. If x is the same Number value as y, return true.
+    // 5. Return false.
+    x == y
   }
 }
