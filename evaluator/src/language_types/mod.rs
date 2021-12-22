@@ -32,8 +32,17 @@ pub enum Value {
   Object(JsObject),
 }
 
-impl AsRef<Value> for Value {
-  fn as_ref(&self) -> &Value {
-    self
+impl Default for Value {
+  fn default() -> Self {
+    Self::Undefined
+  }
+}
+
+impl Value {
+  pub fn as_object(&self) -> Option<&JsObject> {
+    match self {
+      Self::Object(o) => Some(o),
+      _ => None,
+    }
   }
 }

@@ -1,6 +1,8 @@
 //! https://tc39.es/ecma262/#sec-testing-and-comparison-operations
 
-use crate::language_types::{big_int::JsBigInt, number::JsNumber, Value};
+use crate::language_types::{
+  big_int::JsBigInt, number::JsNumber, object::JsObject, Value,
+};
 
 impl Value {
   /// https://tc39.es/ecma262/#sec-iscallable
@@ -9,7 +11,7 @@ impl Value {
     match self {
       Self::Object(v) => {
         // 2. If argument has a [[Call]] internal method, return true.
-        if v.call().is_some() {
+        if v.get_internal_methods().call.is_some() {
           return true;
         }
         // 3. Return false.
@@ -26,6 +28,12 @@ impl Value {
     // 3. Return false.
     matches!(self, Self::String(_) | Self::Symbol(_))
   }
+}
+
+/// https://tc39.es/ecma262/#sec-isextensible-o
+pub fn is_extensible(o: &JsObject) -> Result<bool, Value> {
+  // 1. Return ? O.[[IsExtensible]]().
+  o.is_extensible()
 }
 
 /// https://tc39.es/ecma262/#sec-samevalue

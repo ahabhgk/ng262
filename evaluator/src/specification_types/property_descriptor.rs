@@ -1,39 +1,35 @@
-use crate::language_types::{boolean::JsBoolean, object::JsObject, Value};
+use crate::language_types::{object::JsObject, Value};
 
 #[derive(Debug, Clone)]
-pub enum Get {
+pub enum GetSet {
   Object(JsObject),
   Undefined,
 }
 
-#[derive(Debug, Clone)]
-pub enum Set {
-  Object(JsObject),
-  Undefined,
+impl Default for GetSet {
+  fn default() -> Self {
+    Self::Undefined
+  }
+}
+
+impl From<GetSet> for Value {
+  fn from(get_set: GetSet) -> Self {
+    match get_set {
+      GetSet::Undefined => Self::Undefined,
+      GetSet::Object(o) => Self::Object(o),
+    }
+  }
 }
 
 /// https://tc39.es/ecma262/#sec-property-descriptor-specification-type
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PropertyDescriptor {
   pub value: Option<Value>,
-  pub writable: Option<JsBoolean>,
-  pub get: Option<Get>,
-  pub set: Option<Set>,
-  pub enumerable: Option<JsBoolean>,
-  pub configurable: Option<JsBoolean>,
-}
-
-impl Default for PropertyDescriptor {
-  fn default() -> Self {
-    Self {
-      value: Some(Value::Undefined),
-      writable: Some(JsBoolean::False),
-      get: Some(Get::Undefined),
-      set: Some(Set::Undefined),
-      enumerable: Some(JsBoolean::False),
-      configurable: Some(JsBoolean::False),
-    }
-  }
+  pub writable: Option<bool>,
+  pub get: Option<GetSet>,
+  pub set: Option<GetSet>,
+  pub enumerable: Option<bool>,
+  pub configurable: Option<bool>,
 }
 
 impl PropertyDescriptor {
@@ -46,6 +42,15 @@ impl PropertyDescriptor {
       enumerable: None,
       configurable: None,
     }
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.value.is_none()
+      && self.writable.is_none()
+      && self.get.is_none()
+      && self.set.is_none()
+      && self.enumerable.is_none()
+      && self.configurable.is_none()
   }
 
   /// https://tc39.es/ecma262/#sec-isaccessordescriptor
