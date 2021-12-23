@@ -1,5 +1,5 @@
 use crate::{
-  abstract_operations::operations_on_objects::call,
+  abstract_operations::operations_on_objects::{call, create_data_property},
   language_types::{
     object::{JsObject, PropertyKey, Prototype},
     Value,
@@ -7,7 +7,10 @@ use crate::{
   specification_types::property_descriptor::{GetSet, PropertyDescriptor},
 };
 
-use super::testing_and_comparison_operations::{is_extensible, same_value};
+use super::{
+  data_types_and_values::is_array_index,
+  testing_and_comparison_operations::{is_extensible, same_value},
+};
 
 /// https://tc39.es/ecma262/#sec-ordinarygetprototypeof
 pub fn ordinary_get_prototype_of(o: &JsObject) -> Result<Prototype, Value> {
@@ -386,7 +389,118 @@ pub fn ordinary_set_with_own_descriptor(
   p: PropertyKey,
   v: Value,
   receiver: &Value,
-  own_desc: Option<PropertyDescriptor>,
+  mut own_desc: Option<PropertyDescriptor>,
 ) -> Result<bool, Value> {
-  todo!()
+  // 1. If ownDesc is undefined, then
+  if own_desc.is_none() {
+    // a. Let parent be ? O.[[GetPrototypeOf]]().
+    let parent = o.get_prototype_of()?;
+    // b. If parent is not null, then
+    if let Prototype::Object(parent) = parent {
+      // i. Return ? parent.[[Set]](P, V, Receiver).
+      return parent.set(p, v, receiver);
+    // c. Else,
+    } else {
+      // i. Set ownDesc to the PropertyDescriptor { [[Value]]: undefined, [[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: true }.
+      own_desc = Some(
+        PropertyDescriptor::empty()
+          .value(Value::Undefined)
+          .writable(true)
+          .enumerable(true)
+          .configurable(true),
+      );
+    }
+  }
+  let own_desc = own_desc.unwrap();
+  // 2. If IsDataDescriptor(ownDesc) is true, then
+  if own_desc.is_data_descriptor() {
+    // a. If ownDesc.[[Writable]] is false, return false.
+    if let Some(false) = own_desc.writable {
+      return Ok(false);
+    }
+    // b. If Type(Receiver) is not Object, return false.
+    match receiver {
+      Value::Object(receiver) => {
+        // c. Let existingDescriptor be ? Receiver.[[GetOwnProperty]](P).
+        let existing_descriptor = receiver.get_own_property(&p)?;
+        // d. If existingDescriptor is not undefined, then
+        if let Some(existing_descriptor) = existing_descriptor {
+          // i. If IsAccessorDescriptor(existingDescriptor) is true, return false.
+          if existing_descriptor.is_accessor_descriptor() {
+            return Ok(false);
+          }
+          // ii. If existingDescriptor.[[Writable]] is false, return false.
+          if let Some(false) = existing_descriptor.writable {
+            return Ok(false);
+          }
+          // iii. Let valueDesc be the PropertyDescriptor { [[Value]]: V }.
+          let value_desc = PropertyDescriptor::empty().value(v);
+          // iv. Return ? Receiver.[[DefineOwnProperty]](P, valueDesc).
+          return receiver.define_own_property(p, value_desc);
+        // e. Else,
+        } else {
+          // i. Assert: Receiver does not currently have a property P.
+          // ii. Return ? CreateDataProperty(Receiver, P, V).
+          return create_data_property(receiver, p, v);
+        }
+      }
+      _ => return Ok(false),
+    }
+  }
+  // 3. Assert: IsAccessorDescriptor(ownDesc) is true.
+  assert!(own_desc.is_accessor_descriptor());
+  // 4. Let setter be ownDesc.[[Set]].
+  let setter = own_desc.set.unwrap();
+  match setter {
+    // 5. If setter is undefined, return false.
+    GetSet::Undefined => return Ok(false),
+    GetSet::Object(setter) => {
+      // 6. Perform ? Call(setter, Receiver, « V »).
+      call(&Value::Object(setter), receiver, &[v])?;
+    }
+  }
+  // 7. Return true.
+  Ok(true)
+}
+
+/// https://tc39.es/ecma262/#sec-ordinarydelete
+pub fn ordinary_delete(o: &JsObject, p: &PropertyKey) -> Result<bool, Value> {
+  // 1. Let desc be ? O.[[GetOwnProperty]](P).
+  let desc = o.get_own_property(p)?;
+  match desc {
+    // 2. If desc is undefined, return true.
+    None => return Ok(true),
+    Some(desc) => {
+      // 3. If desc.[[Configurable]] is true, then
+      if let Some(true) = desc.configurable {
+        // a. Remove the own property with name P from O.
+        o.get_properties_mut().remove(p);
+        // b. Return true.
+        return Ok(true);
+      }
+    }
+  }
+  // 4. Return false.
+  Ok(false)
+}
+
+/// https://tc39.es/ecma262/#sec-ordinaryownpropertykeys
+pub fn ordinary_own_property_keys(
+  o: &JsObject,
+) -> Result<Vec<PropertyKey>, Value> {
+  // 1. Let keys be a new empty List.
+  let mut keys = Vec::new();
+  // 2. For each own property key P of O such that P is an array index, in ascending numeric index order, do
+  for p in o.get_properties().keys() {
+    if is_array_index(&p.clone().into()) {
+      keys.push(p.clone())
+    }
+  }
+  // a. Add P as the last element of keys.
+  // 3. For each own property key P of O such that Type(P) is String and P is not an array index, in ascending chronological order of property creation, do
+  // a. Add P as the last element of keys.
+  // 4. For each own property key P of O such that Type(P) is Symbol, in ascending chronological order of property creation, do
+  // a. Add P as the last element of keys.
+  // 5. Return keys.
+  Ok(keys)
 }

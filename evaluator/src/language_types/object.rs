@@ -135,9 +135,21 @@ impl JsObject {
     p: PropertyKey,
     v: Value,
     receiver: &Value,
-  ) -> Result<Value, Value> {
+  ) -> Result<bool, Value> {
     let f = self.get_internal_methods().set;
     f(self, p, v, receiver)
+  }
+
+  /// https://tc39.es/ecma262/#sec-ordinary-object-internal-methods-and-internal-slots-delete-p
+  pub fn delete(&self, p: &PropertyKey) -> Result<bool, Value> {
+    let f = self.get_internal_methods().delete;
+    f(self, p)
+  }
+
+  /// https://tc39.es/ecma262/#sec-ordinary-object-internal-methods-and-internal-slots-ownpropertykeys
+  pub fn own_property_keys(&self) -> Result<Vec<PropertyKey>, Value> {
+    let f = self.get_internal_methods().own_property_keys;
+    f(self)
   }
 }
 
@@ -154,10 +166,19 @@ impl JsObject {
   }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PropertyKey {
   String(JsString),
   Symbol(JsSymbol),
+}
+
+impl From<PropertyKey> for Value {
+  fn from(p: PropertyKey) -> Self {
+    match p {
+      PropertyKey::String(p) => Self::String(p),
+      PropertyKey::Symbol(p) => Self::Symbol(p),
+    }
+  }
 }
 
 pub struct InternalMethods {
@@ -171,7 +192,9 @@ pub struct InternalMethods {
     fn(&JsObject, PropertyKey, PropertyDescriptor) -> Result<bool, Value>,
   pub has_property: fn(&JsObject, &PropertyKey) -> Result<bool, Value>,
   pub get: fn(&JsObject, &PropertyKey, &Value) -> Result<Value, Value>,
-  pub set: fn(&JsObject, PropertyKey, Value, &Value) -> Result<Value, Value>,
+  pub set: fn(&JsObject, PropertyKey, Value, &Value) -> Result<bool, Value>,
+  pub delete: fn(&JsObject, &PropertyKey) -> Result<bool, Value>,
+  pub own_property_keys: fn(&JsObject) -> Result<Vec<PropertyKey>, Value>,
 
   pub call: Option<fn(&JsObject, &Value, &[Value]) -> Result<Value, Value>>,
 }

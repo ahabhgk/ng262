@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use super::{boolean::JsBoolean, Value};
+use super::string::JsString;
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct JsNumber(f64);
@@ -49,5 +49,22 @@ impl JsNumber {
     // 4. If x is the same Number value as y, return true.
     // 5. Return false.
     x == y
+  }
+
+  /// https://tc39.es/ecma262/#sec-numeric-types-number-tostring
+  pub fn to_string(x: &f64) -> JsString {
+    if x.is_nan() {
+      return "NaN".to_owned();
+    }
+    if x == &0.0 {
+      return "0".to_owned();
+    }
+    if x < &0.0 {
+      return format!("-{}", JsNumber::to_string(&-x));
+    }
+    if x.is_infinite() {
+      return "Infinity".to_owned();
+    }
+    format!("{}", x)
   }
 }

@@ -8,8 +8,7 @@ pub mod string;
 pub mod symbol;
 
 use self::{
-  big_int::JsBigInt, boolean::JsBoolean, number::JsNumber, object::JsObject,
-  string::JsString, symbol::JsSymbol,
+  big_int::JsBigInt, object::JsObject, string::JsString, symbol::JsSymbol,
 };
 
 #[derive(Debug, Clone)]

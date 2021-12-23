@@ -44,6 +44,36 @@ impl PropertyDescriptor {
     }
   }
 
+  pub fn value(mut self, v: Value) -> Self {
+    self.value = Some(v);
+    self
+  }
+
+  pub fn writable(mut self, v: bool) -> Self {
+    self.writable = Some(v);
+    self
+  }
+
+  pub fn get(mut self, v: GetSet) -> Self {
+    self.get = Some(v);
+    self
+  }
+
+  pub fn set(mut self, v: GetSet) -> Self {
+    self.set = Some(v);
+    self
+  }
+
+  pub fn enumerable(mut self, v: bool) -> Self {
+    self.enumerable = Some(v);
+    self
+  }
+
+  pub fn configurable(mut self, v: bool) -> Self {
+    self.configurable = Some(v);
+    self
+  }
+
   pub fn is_empty(&self) -> bool {
     self.value.is_none()
       && self.writable.is_none()
