@@ -491,12 +491,13 @@ pub fn ordinary_own_property_keys(
   // 1. Let keys be a new empty List.
   let mut keys = Vec::new();
   // 2. For each own property key P of O such that P is an array index, in ascending numeric index order, do
+  // a. Add P as the last element of keys.
   for p in o.get_properties().keys() {
-    if is_array_index(&p.clone().into()) {
+    if is_array_index(&p.clone().into())? {
       keys.push(p.clone())
     }
   }
-  // a. Add P as the last element of keys.
+  todo!();
   // 3. For each own property key P of O such that Type(P) is String and P is not an array index, in ascending chronological order of property creation, do
   // a. Add P as the last element of keys.
   // 4. For each own property key P of O such that Type(P) is Symbol, in ascending chronological order of property creation, do
