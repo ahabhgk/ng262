@@ -5,6 +5,12 @@ pub enum JsBoolean {
   False,
 }
 
+impl From<JsBoolean> for bool {
+  fn from(b: JsBoolean) -> Self {
+    matches!(b, JsBoolean::True)
+  }
+}
+
 impl From<bool> for JsBoolean {
   fn from(b: bool) -> Self {
     if b {

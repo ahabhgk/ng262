@@ -1,5 +1,4 @@
-/// https://tc39.es/ecma262/#sec-ecmascript-language-types-symbol-type
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct JsSymbol {
   id: usize,
 }
