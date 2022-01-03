@@ -40,9 +40,9 @@ checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
 name = "ast_node"
-version = "0.7.4"
+version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e96d5444b02f3080edac8a144f6baf29b2fb6ff589ad4311559731a7c7529381"
+checksum = "82b2dd56b7c509b3a0bb47a97a066cba459983470d3b8a3c20428737270f70bd"
 dependencies = [
  "darling",
  "pmutil",
@@ -758,9 +758,9 @@ dependencies = [
 
 [[package]]
 name = "swc_common"
-version = "0.15.1"
+version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf33ac965b9ce43b653baa35a5de6ecfd96b9bbab9547a5fb4ce33c46a36fe75"
+checksum = "d4fddfb7dab63a97481d9d912411405c2f8a9f91c38e98c687e7f2359f73e35f"
 dependencies = [
  "ahash",
  "ast_node",
