@@ -40,9 +40,9 @@ checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
 name = "ast_node"
-version = "0.7.4"
+version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e96d5444b02f3080edac8a144f6baf29b2fb6ff589ad4311559731a7c7529381"
+checksum = "82b2dd56b7c509b3a0bb47a97a066cba459983470d3b8a3c20428737270f70bd"
 dependencies = [
  "darling",
  "pmutil",
@@ -388,7 +388,7 @@ version = "0.1.0"
 dependencies = [
  "num-bigint 0.4.3",
  "num-traits",
- "swc_common",
+ "swc_common 0.17.2",
  "swc_ecma_ast",
  "swc_ecma_parser",
 ]
@@ -679,9 +679,9 @@ dependencies = [
 
 [[package]]
 name = "siphasher"
-version = "0.3.7"
+version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "533494a8f9b724d33625ab53c6c4800f7cc445895924a8ef649222dcb76e938b"
+checksum = "a86232ab60fa71287d7f2ddae4a7073f6b7aac33631c3015abb556f08c6d0a3e"
 
 [[package]]
 name = "smallvec"
@@ -758,9 +758,35 @@ dependencies = [
 
 [[package]]
 name = "swc_common"
-version = "0.15.1"
+version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf33ac965b9ce43b653baa35a5de6ecfd96b9bbab9547a5fb4ce33c46a36fe75"
+checksum = "d4fddfb7dab63a97481d9d912411405c2f8a9f91c38e98c687e7f2359f73e35f"
+dependencies = [
+ "ahash",
+ "ast_node",
+ "cfg-if 0.1.10",
+ "debug_unreachable",
+ "either",
+ "from_variant",
+ "num-bigint 0.2.6",
+ "once_cell",
+ "owning_ref",
+ "rustc-hash",
+ "scoped-tls",
+ "serde",
+ "string_cache",
+ "swc_eq_ignore_macros",
+ "swc_visit",
+ "tracing",
+ "unicode-width",
+ "url",
+]
+
+[[package]]
+name = "swc_common"
+version = "0.17.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a23e045ca915a377988b2a419cc28f4f981ce40368084d5b18b7d15a84f84872"
 dependencies = [
  "ahash",
  "ast_node",
@@ -775,6 +801,7 @@ dependencies = [
  "rustc-hash",
  "scoped-tls",
  "serde",
+ "siphasher",
  "string_cache",
  "swc_eq_ignore_macros",
  "swc_visit",
@@ -795,7 +822,7 @@ dependencies = [
  "serde",
  "string_enum",
  "swc_atoms",
- "swc_common",
+ "swc_common 0.15.3",
 ]
 
 [[package]]
@@ -811,7 +838,7 @@ dependencies = [
  "serde",
  "smallvec",
  "swc_atoms",
- "swc_common",
+ "swc_common 0.15.3",
  "swc_ecma_ast",
  "tracing",
  "typed-arena",
